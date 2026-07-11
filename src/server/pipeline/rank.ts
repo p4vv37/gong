@@ -1,5 +1,26 @@
-import type { Criterion, OfferAssessment, Recommendation } from "../../contract";
+import type { Criterion, MerchantPolicy, Offer, OfferAssessment, Recommendation } from "../../contract";
 import type { RunState } from "./state";
+
+/**
+ * Delivered price when it can be established: explicit total, else item +
+ * offer-level shipping, else item + merchant policy shipping (free above
+ * the threshold when the item qualifies). Undefined when shipping is a
+ * genuine unknown — never assume free delivery.
+ */
+export function effectiveTotal(offer: Offer, policy?: MerchantPolicy): number | undefined {
+  const explicit = offer.totalPrice?.value?.amount;
+  if (explicit !== undefined) return explicit;
+  const item = offer.price.value?.amount;
+  if (item === undefined) return undefined;
+  const offerShipping = offer.delivery?.value?.cost?.amount;
+  if (offerShipping !== undefined) return item + offerShipping;
+  const ship = policy?.shipping.value;
+  if (ship) {
+    if (ship.freeAbove?.amount !== undefined && item >= ship.freeAbove.amount) return item;
+    if (ship.cost?.amount !== undefined) return item + ship.cost.amount;
+  }
+  return undefined;
+}
 
 /**
  * Deterministic eligibility + scoring. Hard constraints filter — they never
@@ -38,9 +59,12 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
   const brief = state.request.brief;
   const out: Record<string, OfferAssessment> = {};
 
+  // value compares DELIVERED prices where establishable, item prices otherwise
+  const deliveredOf = (offer: Offer) =>
+    effectiveTotal(offer, state.policies.get(offer.merchantId)) ?? offer.price.value?.amount;
   const eligiblePrices: number[] = [];
   for (const offer of state.offers.values()) {
-    const price = offer.totalPrice?.value?.amount ?? offer.price.value?.amount;
+    const price = deliveredOf(offer);
     if (price !== undefined) eligiblePrices.push(price);
   }
   const minPrice = Math.min(...eligiblePrices);
@@ -111,10 +135,11 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
       (merchantReview?.manipulationRisk === "suspicious" ? 0.5 : 0) +
       (offer.condition === "used" ? 0.4 : 0); // used items must not silently win
 
+    const delivered = deliveredOf(offer);
     const value =
-      price === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
+      delivered === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
         ? 0.5
-        : 1 - (price - minPrice) / (maxPrice - minPrice);
+        : 1 - (delivered - minPrice) / (maxPrice - minPrice);
     const preferenceFit = preferTotal ? Math.min(1, preferHit / preferTotal) : 0.5;
     const uncertaintyPenalty = Math.min(1, unknowns.length / 6);
     const merchantTrustBoost = merchant?.platform === "shopify" ? 0.05 : 0;

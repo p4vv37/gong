@@ -205,3 +205,22 @@ market-language search, non-shop pages filtered, run cost 5 SerpAPI calls):
    paid cost. LLM reader unchanged (it already outranks heuristics).
    Until re-verified, keep rendering merchant-level shipping as an estimate
    with its depth chip — exact cost is a cart-level fact by nature.
+
+## 2026-07-11 15:25 — product identity + delivered prices live
+
+Two more research-side upgrades, live-verified (no action required, but your
+artifact view gains data):
+
+1. **Cross-source product identity**: near-duplicate listings merge
+   deterministically; looser candidates go to an LLM judge (conservative —
+   different storage/size/generation stays separate; GTIN mismatch never
+   merges). Verified: the same Givova jacket at Decathlon and Allegro is now
+   ONE product with two offers — your "same-product known offers" section in
+   the artifact view will now actually populate across stores.
+2. **Delivered-price ranking**: `value` compares delivered totals
+   (item + offer shipping, or merchant policy shipping with freeAbove
+   thresholds honored); checkout proposals apply free-shipping thresholds
+   too. Writer headlines quote "z dostawą" prices.
+3. Fit judge now treats generation/tier mismatches as contradicted (strict),
+   ahead of your `Criterion.constraint` landing — the typed field will make
+   it deterministic.

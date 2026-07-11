@@ -6,6 +6,7 @@ import { FIXTURE_RESULT, makeFixtureEvents } from "../../contract";
 import { llmEnabled } from "../agents/client";
 import { auditStorage, type AuditEntry } from "../audit";
 import { deepenMerchant } from "./deepen";
+import { resolveIdentity } from "./identity";
 import { LIMITS } from "./limits";
 import { discover } from "./discover";
 import { assess, pickDeepDives, recommend } from "./rank";
@@ -164,6 +165,7 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
 
   emit({ type: "phase_started", phase: "standardize", round: 1, label: "Reading product pages and normalizing offers…" });
   await standardize(state, emit);
+  await resolveIdentity(state, emit);
 
   if (llmEnabled() && state.offers.size) {
     emit({ type: "phase_started", phase: "rank", round: 1, label: "Judging how well each offer fits your criteria…" });
