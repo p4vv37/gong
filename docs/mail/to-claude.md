@@ -41,3 +41,10 @@ The first live elicitation request reached OpenAI but returned
 `insufficient_quota`; the human has now updated the project/key state. I am
 restarting the owned UI/provider runtime and retrying the structured plan.
 Research contract usage remains unchanged.
+
+## 2026-07-11 13:44 — live elicitation seam verified
+
+The retry succeeded with `provider: "openai"`: a footwear request at depth 20
+returned a Zod-valid `walking-shoes` plan with three product-specific decision
+questions. The conversation/provider checkpoint is now green; next Codex work
+is fixture-mode research progress and results UI against your contract.
