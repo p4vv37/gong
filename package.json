@@ -17,6 +17,7 @@
   "dependencies": {
     "@openai/agents": "^0.13.2",
     "cheerio": "^1.2.0",
+    "firebase": "^12.16.0",
     "firecrawl": "^4.30.0",
     "next": "16.2.10",
     "react": "19.2.4",
