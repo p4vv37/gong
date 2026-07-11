@@ -1,13 +1,14 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { questionsForDepth } from "@/domain/clothing-questions";
+import { FormEvent, useEffect, useState } from "react";
 import {
   applyQuestionAnswer,
   createPurchaseBrief,
+  type DecisionQuestion,
   type PurchaseBrief,
   type QuestionChoice,
 } from "@/domain/purchase-brief";
+import { decisionQuestionSchema, questionPlanSchema } from "@/lib/question-plan/schema";
 
 const exampleRequest = "A warm everyday winter jacket under 900 PLN, not too sporty, for Warsaw weather";
 
@@ -21,15 +22,75 @@ export function PurchaseWorkbench() {
   const [request, setRequest] = useState(exampleRequest);
   const [depth, setDepth] = useState(58);
   const [brief, setBrief] = useState<PurchaseBrief | null>(null);
+  const [questions, setQuestions] = useState<DecisionQuestion[]>([]);
+  const [provider, setProvider] = useState<"mock" | "openai">("mock");
+  const [planning, setPlanning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [customAnswer, setCustomAnswer] = useState("");
-  const questions = useMemo(() => questionsForDepth(brief?.warrantedDepth ?? depth), [brief?.warrantedDepth, depth]);
   const currentQuestion = brief ? questions[brief.answeredQuestionIds.length] : undefined;
 
-  function startResearch(event: FormEvent) {
+  useEffect(() => {
+    let restoreTimer: number | undefined;
+    try {
+      const raw = localStorage.getItem("gong.purchase-session.v1");
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        request: string;
+        depth: number;
+        brief: PurchaseBrief;
+        questions: DecisionQuestion[];
+        provider: "mock" | "openai";
+      };
+      const validatedQuestions = saved.questions.map((question) => decisionQuestionSchema.parse(question));
+      restoreTimer = window.setTimeout(() => {
+        setRequest(saved.request);
+        setDepth(saved.depth);
+        setBrief(saved.brief);
+        setQuestions(validatedQuestions);
+        setProvider(saved.provider);
+      }, 0);
+    } catch {
+      localStorage.removeItem("gong.purchase-session.v1");
+    }
+
+    return () => {
+      if (restoreTimer !== undefined) window.clearTimeout(restoreTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!brief || questions.length === 0) return;
+    localStorage.setItem(
+      "gong.purchase-session.v1",
+      JSON.stringify({ request, depth, brief, questions, provider }),
+    );
+  }, [brief, depth, provider, questions, request]);
+
+  async function startResearch(event: FormEvent) {
     event.preventDefault();
-    if (!request.trim()) return;
-    setBrief(createPurchaseBrief(request.trim(), depth));
-    setCustomAnswer("");
+    if (!request.trim() || planning) return;
+    setPlanning(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/question-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request: request.trim(), warrantedDepth: depth }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Category research failed");
+
+      const plan = questionPlanSchema.parse(payload.plan);
+      setQuestions(plan.questions);
+      setProvider(payload.provider === "openai" ? "openai" : "mock");
+      setBrief({ ...createPurchaseBrief(request.trim(), depth), category: plan.category });
+      setCustomAnswer("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Category research failed");
+    } finally {
+      setPlanning(false);
+    }
   }
 
   function answer(choice: QuestionChoice | string) {
@@ -39,7 +100,10 @@ export function PurchaseWorkbench() {
   }
 
   function reset() {
+    localStorage.removeItem("gong.purchase-session.v1");
     setBrief(null);
+    setQuestions([]);
+    setError(null);
     setCustomAnswer("");
   }
 
@@ -54,7 +118,7 @@ export function PurchaseWorkbench() {
               <p className="text-xs text-[var(--muted)]">purchase intelligence</p>
             </div>
           </div>
-          <div className="status-pill"><span /> Local prototype</div>
+          <div className="status-pill"><span /> {brief && provider === "openai" ? "OpenAI agent" : "Local prototype"}</div>
         </header>
 
         <section className="hero-grid">
@@ -92,7 +156,10 @@ export function PurchaseWorkbench() {
                 onChange={(event) => setDepth(Number(event.target.value))}
               />
             </div>
-            <button className="primary-button" type="submit">Map the decision <span>→</span></button>
+            {error ? <p className="form-error" role="alert">{error}</p> : null}
+            <button className="primary-button" type="submit" disabled={planning || !request.trim()}>
+              {planning ? "Researching category…" : "Map the decision"} <span>→</span>
+            </button>
           </form>
         ) : (
           <div className="workspace-grid">
@@ -140,7 +207,7 @@ export function PurchaseWorkbench() {
                   <span className="ready-icon">✓</span>
                   <p className="eyebrow">Decision mapped</p>
                   <h2>Ready to search with intent.</h2>
-                  <p>The next checkpoint connects this brief to the OpenAI Agents SDK. No live search has run in this keyless prototype.</p>
+                  <p>{provider === "openai" ? "The OpenAI category agent produced this plan. Product search is the next stage." : "The deterministic fixture produced this plan. Add an OpenAI key to test live category reasoning."}</p>
                   <button className="primary-button" type="button" disabled>Start product research <span>→</span></button>
                 </div>
               )}
@@ -175,7 +242,7 @@ export function PurchaseWorkbench() {
 
         <footer>
           <span>Checkpoint 01</span>
-          <p>Deterministic clothing demo · no API keys · nothing is purchased</p>
+          <p>{provider === "openai" ? "Structured OpenAI plan" : "Deterministic clothing demo"} · nothing is purchased</p>
         </footer>
       </div>
     </main>
