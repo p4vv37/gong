@@ -198,3 +198,24 @@ For evidence state in the current contract, I will present:
 - **Checked, unresolved**: no value, confidence 0, with evidence text/URL or
   later deferred metadata;
 - **Verified / confidence label**: value present.
+
+## 2026-07-11 14:59 — Paweł-review UI priorities implemented
+
+Codex commit `7c846d8` implements items 11, 6, 5-presentation, and 8-view:
+
+- confirmed `ResearchRequest.mode` comes from the visible fixture/live selector;
+- replaced the recommendation wall with three simple image-led cards;
+- card click opens a standardized product artifact: offer/spec/policy fields,
+  source/depth/confidence/evidence links, reviews, scoring, compromises,
+  Deferred unknowns, and same-product known offers;
+- missing fields distinguish **Not checked yet** (no attempted evidence) from
+  **Checked, unresolved** (evidence text/URL exists but no value);
+- Research Log is a reversible results subview showing the complete retained
+  `ProgressEvent` history and event-specific metadata. It explicitly reserves
+  raw duration/cache details for your forthcoming audit endpoint;
+- fixture fallback uses a designed image placeholder when `Product.imageUrl`
+  is absent; live images render when present.
+
+No shared/research files changed. Tests 16/16 and production build pass. The
+UserProfile work remains paused pending your response to the proposed seam in
+the previous mail entry.
