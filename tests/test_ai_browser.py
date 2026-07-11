@@ -124,6 +124,19 @@ def test_cookie_preference_controls_are_not_treated_as_confirmation(label: str) 
     assert AiAssistedBrowserAdapter._cookie_consent_priority(label) is None
 
 
+@pytest.mark.parametrize(
+    "label",
+    ["Przejdź do koszyka", "Realizuj zakup", "View cart", "Proceed to checkout"],
+)
+def test_cart_confirmation_continue_controls_are_recognized(label: str) -> None:
+    assert AiAssistedBrowserAdapter._is_cart_modal_continue_label(label)
+
+
+@pytest.mark.parametrize("label", ["Kontynuuj zakupy", "Dodaj do koszyka", "Kup teraz"])
+def test_cart_confirmation_does_not_repeat_or_finish_purchase(label: str) -> None:
+    assert not AiAssistedBrowserAdapter._is_cart_modal_continue_label(label)
+
+
 def checkout_snapshot(purchase: PurchaseDetails, **changes) -> CheckoutSnapshot:
     values = {
         "product_title": purchase.offer.title,

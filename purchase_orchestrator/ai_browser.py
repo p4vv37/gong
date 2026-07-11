@@ -294,6 +294,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             # them deterministically so the planner cannot get trapped expanding/scrolling
             # inside a consent modal instead of closing it.
             self._dismiss_cookie_consent(page)
+            self._dismiss_nonessential_overlays(page)
+            if successful_cart_adds:
+                self._continue_from_cart_modal(page)
+                self._dismiss_nonessential_overlays(page)
             if self._is_payment_or_final_order_page(page):
                 print("[ai-browser] Reached checkout boundary; waiting for user action.")
                 return
@@ -443,6 +447,66 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         return CheckoutValidationResult(valid=not reasons, reasons=reasons)
 
     @staticmethod
+    def _is_cart_modal_continue_label(text: str) -> bool:
+        normalized = " ".join(text.casefold().split())
+        return normalized in {
+            "przejdź do koszyka",
+            "realizuj zakup",
+            "zobacz koszyk",
+            "go to cart",
+            "view cart",
+            "proceed to checkout",
+            "checkout",
+        }
+
+    def _continue_from_cart_modal(self, page: Page) -> bool:
+        """Use the cart/checkout action inside a visible add-to-cart confirmation modal."""
+        modal = page.locator('[role="dialog"], #modal.--added, .modal.--added').filter(visible=True)
+        if not modal.count():
+            return False
+        controls = modal.locator('button, a, [role="button"]')
+        for index in range(controls.count()):
+            control = controls.nth(index)
+            try:
+                label = control.inner_text(timeout=500).strip()
+                if control.is_visible() and self._is_cart_modal_continue_label(label):
+                    control.click(timeout=5_000)
+                    print(f"[ai-browser] Continued from cart modal via: {label}")
+                    self._wait_for_interactive_state(page, minimum_wait_ms=1_000)
+                    return True
+            except PlaywrightError:
+                continue
+        return False
+
+    @staticmethod
+    def _dismiss_nonessential_overlays(page: Page) -> bool:
+        """Close marketing and postcode interruptions without accepting or submitting data."""
+        dismissed = False
+        try:
+            marketing = page.locator(
+                '#edrone--main--custom-popup--container, iframe[title="Edrone Onsite Popup"]'
+            )
+            if marketing.filter(visible=True).count():
+                marketing.evaluate_all("elements => elements.forEach(element => element.remove())")
+                dismissed = True
+        except PlaywrightError:
+            pass
+
+        for _ in range(3):
+            try:
+                postcode_visible = page.locator('#modal.--zipcode').filter(visible=True).count()
+            except PlaywrightError:
+                postcode_visible = 0
+            if not postcode_visible:
+                break
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            dismissed = True
+        if dismissed:
+            print("[ai-browser] Dismissed a non-checkout overlay")
+        return dismissed
+
+    @staticmethod
     def _cookie_consent_priority(text: str) -> int | None:
         """Prefer the least permissive consent choice and ignore preference accordions."""
         normalized = " ".join(text.casefold().split())
@@ -559,6 +623,9 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         while elapsed_ms < self.config.page_settle_timeout_ms:
             page.wait_for_timeout(poll_ms)
             elapsed_ms += poll_ms
+            # Consent widgets often arrive asynchronously. Dismiss them during settling
+            # instead of leaving the overlay visible for the full initial wait.
+            self._dismiss_cookie_consent(page)
             try:
                 signature = tuple(
                     page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']")
@@ -620,7 +687,9 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
     @staticmethod
     def _annotate_candidates(page: Page) -> list[dict]:
         return page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']").evaluate_all(
-            """elements => elements
+            """elements => {
+                elements.forEach(element => element.removeAttribute('data-ai-adapter-candidate'));
+                return elements
                 .filter(element => element.offsetParent !== null && !element.disabled)
                 .slice(0, 100)
                 .map((element, index) => {
@@ -641,7 +710,8 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                             ? Array.from(element.options).slice(0, 30).map(option => ({value: option.value, text: option.text.trim()}))
                             : []
                     };
-                })"""
+                });
+            }"""
         )
 
     def _perform_action(
