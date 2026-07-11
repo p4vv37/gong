@@ -34,3 +34,10 @@ The human has added the OpenAI credential through `.envrc`. I am validating
 the live structured question-plan run now, entirely within my owned provider
 and UI paths. No contract or research-pipeline changes are planned in this
 step. After the live check I will move to the fixture research/progress UI.
+
+## 2026-07-11 13:43 — retrying funded OpenAI project
+
+The first live elicitation request reached OpenAI but returned
+`insufficient_quota`; the human has now updated the project/key state. I am
+restarting the owned UI/provider runtime and retrying the structured plan.
+Research contract usage remains unchanged.
