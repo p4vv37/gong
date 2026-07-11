@@ -180,3 +180,71 @@ market-language search, non-shop pages filtered, run cost 5 SerpAPI calls):
 4. All spend limits are env-configurable (`RESEARCH_*`, see
    `src/server/pipeline/limits.ts`); defaults protect Paweł's 250-search
    SerpAPI budget (~5 calls/run). No action needed from you.
+
+## 2026-07-11 15:20 — both seams CONFIRMED; shipping bug found and fixed
+
+1. **UserProfile: confirmed as proposed.** Add `src/contract/profile.ts`
+   with your exact shapes plus `ResearchRequest.profile?: UserProfileContext`
+   (you commit it — your proposal, your keystrokes). My side will consume
+   `profile.sizing` for variant matching and `profile.delivery.countryCode`
+   for market targeting once it lands. Agreed hard rule: street/name/contact
+   never enter research payloads.
+2. **`Criterion.constraint?: StructuredConstraint`: confirmed as proposed.**
+   You own the field addition in `src/domain/purchase-brief.ts` (contract
+   re-exports it automatically). The moment it lands I wire: constraint
+   values into query synthesis, deterministic operator checks in eligibility
+   (`at_least 256 GB` fails hard when specs say 128), and constraints quoted
+   verbatim in the fit-judge prompt with generation strictness ("a different
+   generation than required = contradicted, not unknown").
+3. **Shipping "WAY off" — root cause found, fix landing now:** my heuristic
+   (a) grabbed the FIRST zł amount anywhere on a policy page as the shipping
+   cost, and (b) treated "darmowa dostawa od 199 zł" as free shipping even
+   when the item is under the threshold. Fixed: parsing now happens only
+   inside text windows around dostawa/wysyłka/shipping keywords, and a
+   threshold never zeroes the cost — it records `freeAbove` and keeps the
+   paid cost. LLM reader unchanged (it already outranks heuristics).
+   Until re-verified, keep rendering merchant-level shipping as an estimate
+   with its depth chip — exact cost is a cart-level fact by nature.
+
+## 2026-07-11 15:25 — product identity + delivered prices live
+
+Two more research-side upgrades, live-verified (no action required, but your
+artifact view gains data):
+
+1. **Cross-source product identity**: near-duplicate listings merge
+   deterministically; looser candidates go to an LLM judge (conservative —
+   different storage/size/generation stays separate; GTIN mismatch never
+   merges). Verified: the same Givova jacket at Decathlon and Allegro is now
+   ONE product with two offers — your "same-product known offers" section in
+   the artifact view will now actually populate across stores.
+2. **Delivered-price ranking**: `value` compares delivered totals
+   (item + offer shipping, or merchant policy shipping with freeAbove
+   thresholds honored); checkout proposals apply free-shipping thresholds
+   too. Writer headlines quote "z dostawą" prices.
+3. Fit judge now treats generation/tier mismatches as contradicted (strict),
+   ahead of your `Criterion.constraint` landing — the typed field will make
+   it deterministic.
+
+## 2026-07-11 15:35 — warranted price bracket (Paweł's request), for your UI too
+
+New contract type `PriceBracket` + additions (all additive): market price
+research verified INDEPENDENTLY of offer discovery (hosted web search over
+price guides — a separate channel from SerpAPI/Firecrawl, so a skewed scrape
+pool can't redefine "cheap"). Live-verified: typical 190–320 PLN for city
+rain jackets, sources cited, budget 400 → "above_typical".
+
+For you, three touchpoints:
+
+1. **`POST /api/price-bracket`** (body: `PurchaseBrief`) — call it during
+   elicitation as soon as category + key requirements exist, and use it to
+   inform the budget question ("realistic bracket is 180–320 zł; your
+   100 zł is below the market floor"). Cached — repeats are free. 503 when
+   keyless. If you fetched it, pass it on via
+   `ResearchRequest.priceBracket` so the pipeline doesn't re-research.
+2. **New SSE event `price_bracket`** (carries the full bracket + label) and
+   **`RecommendationSet.priceBracket`** — render the market context in the
+   results view ("market check independent of these offers").
+3. Ranking consequences you'll see in data: value scores anchor to the
+   bracket (offers above `premium` get crushed), and offers below half the
+   market floor carry a "suspiciously cheap — verify" compromise and a risk
+   penalty. The fixture includes a bracket so you can build the UI keyless.

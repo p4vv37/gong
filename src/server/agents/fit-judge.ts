@@ -34,7 +34,9 @@ const fitJudge = new Agent({
     "'matched' when the product clearly satisfies it, 'contradicted' when it clearly violates it, 'unknown' when the " +
     "listing does not say. Judge only from the given titles/attributes — no outside knowledge about specific SKUs, " +
     "and never assume an unstated attribute: when in doubt, 'unknown' is the correct answer, not a guess. " +
-    "Polish product names are common; understand them.",
+    "Exception — generation/recency criteria are STRICT: when the user requires the newest/current generation or a " +
+    "specific model tier and the listing clearly names an older generation or different tier, that is 'contradicted', " +
+    "not 'unknown'. Polish product names are common; understand them.",
   outputType: JudgeOutput,
 });
 

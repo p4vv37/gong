@@ -1,5 +1,26 @@
-import type { Criterion, OfferAssessment, Recommendation } from "../../contract";
+import type { Criterion, MerchantPolicy, Offer, OfferAssessment, PriceBracket, Recommendation } from "../../contract";
 import type { RunState } from "./state";
+
+/**
+ * Delivered price when it can be established: explicit total, else item +
+ * offer-level shipping, else item + merchant policy shipping (free above
+ * the threshold when the item qualifies). Undefined when shipping is a
+ * genuine unknown — never assume free delivery.
+ */
+export function effectiveTotal(offer: Offer, policy?: MerchantPolicy): number | undefined {
+  const explicit = offer.totalPrice?.value?.amount;
+  if (explicit !== undefined) return explicit;
+  const item = offer.price.value?.amount;
+  if (item === undefined) return undefined;
+  const offerShipping = offer.delivery?.value?.cost?.amount;
+  if (offerShipping !== undefined) return item + offerShipping;
+  const ship = policy?.shipping.value;
+  if (ship) {
+    if (ship.freeAbove?.amount !== undefined && item >= ship.freeAbove.amount) return item;
+    if (ship.cost?.amount !== undefined) return item + ship.cost.amount;
+  }
+  return undefined;
+}
 
 /**
  * Deterministic eligibility + scoring. Hard constraints filter — they never
@@ -34,13 +55,23 @@ function criterionMatch(c: Criterion, corpus: string): boolean | undefined {
   return undefined; // absence of words is not evidence of absence
 }
 
-export function assess(state: RunState): Record<string, OfferAssessment> {
+/** 0..1 position of a delivered price inside the independent market bracket (1 = at the floor). */
+function bracketValue(delivered: number, bracket: PriceBracket): number {
+  const span = bracket.premium - bracket.low;
+  if (span <= 0) return 0.5;
+  return 1 - Math.min(1, Math.max(0, (delivered - bracket.low) / span));
+}
+
+export function assess(state: RunState, bracket?: PriceBracket): Record<string, OfferAssessment> {
   const brief = state.request.brief;
   const out: Record<string, OfferAssessment> = {};
 
+  // value compares DELIVERED prices where establishable, item prices otherwise
+  const deliveredOf = (offer: Offer) =>
+    effectiveTotal(offer, state.policies.get(offer.merchantId)) ?? offer.price.value?.amount;
   const eligiblePrices: number[] = [];
   for (const offer of state.offers.values()) {
-    const price = offer.totalPrice?.value?.amount ?? offer.price.value?.amount;
+    const price = deliveredOf(offer);
     if (price !== undefined) eligiblePrices.push(price);
   }
   const minPrice = Math.min(...eligiblePrices);
@@ -101,6 +132,11 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
     if (!policy?.returns.value) unknowns.push("returns");
     if (!policy?.payment.value) unknowns.push("payment");
 
+    const delivered = deliveredOf(offer);
+    // anchor to the independent market bracket so a skewed scrape pool can't
+    // make a bad price look great; too-cheap offers are a risk, not a bargain
+    const suspiciouslyCheap = bracket && delivered !== undefined && delivered < bracket.low * 0.5;
+
     // trust: product/merchant reviews when present
     const productReview = state.reviews.find((r) => r.subject === "product" && r.subjectId === offer.productId);
     const merchantReview = state.reviews.find((r) => r.subject === "merchant" && r.subjectId === offer.merchantId);
@@ -109,12 +145,14 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
     const riskPenalty =
       (merchantReview?.risks?.length ? 0.5 : 0) +
       (merchantReview?.manipulationRisk === "suspicious" ? 0.5 : 0) +
-      (offer.condition === "used" ? 0.4 : 0); // used items must not silently win
+      (offer.condition === "used" ? 0.4 : 0) + // used items must not silently win
+      (suspiciouslyCheap ? 0.35 : 0); // far below market floor → likely wrong variant, listing error or scam
 
-    const value =
-      price === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
+    const poolValue =
+      delivered === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
         ? 0.5
-        : 1 - (price - minPrice) / (maxPrice - minPrice);
+        : 1 - (delivered - minPrice) / (maxPrice - minPrice);
+    const value = bracket && delivered !== undefined ? (poolValue + bracketValue(delivered, bracket)) / 2 : poolValue;
     const preferenceFit = preferTotal ? Math.min(1, preferHit / preferTotal) : 0.5;
     const uncertaintyPenalty = Math.min(1, unknowns.length / 6);
     const merchantTrustBoost = merchant?.platform === "shopify" ? 0.05 : 0;
@@ -153,7 +191,11 @@ export function pickDeepDives(state: RunState, assessments: Record<string, Offer
     .map((a) => a.offerId);
 }
 
-export function recommend(state: RunState, assessments: Record<string, OfferAssessment>): Recommendation[] {
+export function recommend(
+  state: RunState,
+  assessments: Record<string, OfferAssessment>,
+  bracket?: PriceBracket,
+): Recommendation[] {
   const eligible = Object.values(assessments)
     .filter((a) => a.eligible)
     .sort((a, b) => b.score.total - a.score.total);
@@ -182,6 +224,11 @@ export function recommend(state: RunState, assessments: Record<string, OfferAsse
     const shippingCost = offer?.delivery?.value?.cost?.amount ?? policy?.shipping.value?.cost?.amount;
     if (shippingCost) out.push(`shipping ${shippingCost} PLN`);
     if (offer?.condition === "used") out.push("used / second-life item");
+    if (bracket && offer) {
+      const delivered = effectiveTotal(offer, policy) ?? offer.price.value?.amount;
+      if (delivered !== undefined && delivered > bracket.premium) out.push(`above the typical market range (${bracket.typical[0]}–${bracket.typical[1]} ${bracket.currency})`);
+      if (delivered !== undefined && delivered < bracket.low * 0.5) out.push("suspiciously cheap vs the market — verify before trusting");
+    }
     return out;
   };
 

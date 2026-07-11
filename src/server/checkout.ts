@@ -21,9 +21,12 @@ export function createProposal(result: RecommendationSet, offerId: string): Chec
   const itemPrice = offer.price.value;
   if (!itemPrice) return { error: "offer has no verified price" };
 
+  const policyShip = policy?.shipping.value;
+  const qualifiesForFree =
+    policyShip?.freeAbove?.amount !== undefined && itemPrice !== undefined && itemPrice.amount >= policyShip.freeAbove.amount;
   const shippingCost =
     offer.delivery?.value?.cost ??
-    (policy?.shipping.value?.cost !== undefined ? policy.shipping.value.cost : undefined);
+    (qualifiesForFree ? { amount: 0, currency: itemPrice.currency } : policyShip?.cost !== undefined ? policyShip.cost : undefined);
   const total = { amount: Number((itemPrice.amount + (shippingCost?.amount ?? 0)).toFixed(2)), currency: itemPrice.currency };
 
   const unknowns: string[] = [];
