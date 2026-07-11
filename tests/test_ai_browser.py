@@ -37,6 +37,8 @@ def test_only_advisor_values_are_available_for_form_fill() -> None:
     assert values["delivery.city"] == "Warszawa"
     assert values["delivery.first_name"] == "Jan"
     assert values["delivery.last_name"] == "Testowy"
+    assert values["delivery.street_name"] == "Testowa"
+    assert values["delivery.house_number"] == "1"
     assert values["personalization.dedykacja"] == "Mock testowy — nie realizować"
     assert "payment.card_number" not in values
 

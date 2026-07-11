@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import hashlib
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -295,6 +296,7 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             # inside a consent modal instead of closing it.
             self._dismiss_cookie_consent(page)
             self._dismiss_nonessential_overlays(page)
+            self._complete_street_number_modal(page, approved_values)
             if successful_cart_adds:
                 self._continue_from_cart_modal(page)
                 self._dismiss_nonessential_overlays(page)
@@ -507,6 +509,30 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         return dismissed
 
     @staticmethod
+    def _complete_street_number_modal(page: Page, approved_values: dict[str, str]) -> bool:
+        """Complete a split house-number prompt using only the Advisor address_line1 value."""
+        house_number = approved_values.get("delivery.house_number")
+        if not house_number:
+            return False
+        modal = page.locator('#modal.--street-number').filter(visible=True)
+        if not modal.count():
+            return False
+        field = modal.locator('input').filter(visible=True).first
+        if not field.count():
+            return False
+        field.fill(house_number)
+        controls = modal.locator('button, a, [role="button"]').filter(visible=True)
+        for index in range(controls.count()):
+            control = controls.nth(index)
+            label = control.inner_text(timeout=500).strip().casefold()
+            if label in {"zapisz", "potwierdź", "dalej", "save", "confirm"}:
+                control.click(timeout=5_000)
+                print("[ai-browser] Completed house number from Advisor address_line1")
+                page.wait_for_timeout(500)
+                return True
+        return False
+
+    @staticmethod
     def _cookie_consent_priority(text: str) -> int | None:
         """Prefer the least permissive consent choice and ignore preference accordions."""
         normalized = " ".join(text.casefold().split())
@@ -672,6 +698,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             "delivery.country_code": address.country_code,
             "product.quantity": str(purchase.offer.quantity),
         }
+        address_match = re.fullmatch(r"(.+?)\s+([\w-]*\d[\w/-]*)", address.address_line1.strip())
+        if address_match:
+            values["delivery.street_name"] = address_match.group(1)
+            values["delivery.house_number"] = address_match.group(2)
         if address.address_line2:
             values["delivery.address_line2"] = address.address_line2
         if purchase.checkout.customer_note:
