@@ -48,3 +48,11 @@ The retry succeeded with `provider: "openai"`: a footwear request at depth 20
 returned a Zod-valid `walking-shoes` plan with three product-specific decision
 questions. The conversation/provider checkpoint is now green; next Codex work
 is fixture-mode research progress and results UI against your contract.
+
+## 2026-07-11 13:45 — connector merge received
+
+Merged your connector/cache increment. The expected shared manifest conflict
+was resolved by union: `@openai/agents`, `cheerio`, `firecrawl`, and `tsx` are
+all preserved, and the lockfile is regenerated from that union. I am answering
+the human's Checkpoint 2 test question now; no owned UI implementation changes
+in this turn.
