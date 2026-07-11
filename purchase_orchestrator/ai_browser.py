@@ -103,7 +103,7 @@ class BrowserAssetResolver:
 class BrowserConfig:
     headless: bool = False
     max_steps: int = 16
-    model: str = "gpt-5.4-mini"
+    model: str = "gpt-5.6"
     screenshot_dir: str = "artifacts/browser"
     browser_channel: str | None = "chrome"
     page_settle_timeout_ms: int = 6_000
@@ -233,6 +233,8 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             try:
                 page.goto(str(purchase.offer.product_url), wait_until="domcontentloaded", timeout=45_000)
                 self._wait_for_interactive_state(page, minimum_wait_ms=5_000)
+                self._dismiss_cookie_consent(page)
+                self._wait_for_interactive_state(page, minimum_wait_ms=500)
                 self._run_steps(page, purchase)
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[ai-browser] Checkout prepared at {page.url}. Screenshot: {screenshot_path}")
@@ -286,6 +288,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         }
         rejected_stop_attempts = 0
         for step in range(self.config.max_steps):
+            # Cookie widgets are site infrastructure, not part of the purchase plan. Handle
+            # them deterministically so the planner cannot get trapped expanding/scrolling
+            # inside a consent modal instead of closing it.
+            self._dismiss_cookie_consent(page)
             if self._is_payment_or_final_order_page(page):
                 print("[ai-browser] Reached checkout boundary; waiting for user action.")
                 return
@@ -375,6 +381,61 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                 if is_add_to_cart:
                     successful_cart_adds += 1
         raise BrowserRunError("Browser action limit reached before checkout was ready")
+
+    @staticmethod
+    def _cookie_consent_priority(text: str) -> int | None:
+        """Prefer the least permissive consent choice and ignore preference accordions."""
+        normalized = " ".join(text.casefold().split())
+        choices = (
+            (
+                0,
+                (
+                    "potwierdzam wymagane",
+                    "tylko wymagane",
+                    "tylko niezbędne",
+                    "odrzuć wszystkie",
+                    "odrzuć",
+                    "nie zgadzam się",
+                    "reject all",
+                    "decline all",
+                    "necessary only",
+                    "essential only",
+                ),
+            ),
+            (1, ("potwierdzam wszystkie", "akceptuję wszystkie", "accept all", "allow all")),
+        )
+        for priority, labels in choices:
+            if normalized in labels:
+                return priority
+        return None
+
+    def _dismiss_cookie_consent(self, page: Page) -> bool:
+        """Close a visible consent overlay, including banners hosted in an iframe."""
+        matches: list[tuple[int, object, str]] = []
+        for frame in page.frames:
+            try:
+                buttons = frame.get_by_role("button").all()
+            except PlaywrightError:
+                continue
+            for button in buttons:
+                try:
+                    if not button.is_visible():
+                        continue
+                    label = button.inner_text(timeout=500).strip()
+                except PlaywrightError:
+                    continue
+                priority = self._cookie_consent_priority(label)
+                if priority is not None:
+                    matches.append((priority, button, label))
+
+        for _, button, label in sorted(matches, key=lambda match: match[0]):
+            try:
+                button.click(timeout=3_000)
+                print(f"[ai-browser] Cookie consent dismissed via: {label}")
+                return True
+            except PlaywrightError:
+                continue
+        return False
 
     @staticmethod
     def _capture_baseline(page: Page, action: BrowserAction) -> dict[str, str]:

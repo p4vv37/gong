@@ -69,7 +69,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000), or the next available port printed by Next.js.
 
-`QUESTION_PLAN_PROVIDER=auto` tries OpenAI whenever `OPENAI_API_KEY` is present and falls back to the deterministic provider after a transient API failure or timeout. For a fast deterministic local UI test set `QUESTION_PLAN_PROVIDER=mock`. Use `QUESTION_PLAN_PROVIDER=openai` when a live-provider failure must be surfaced instead of hidden. Live category planning performs mandatory web research and is bounded by `QUESTION_PLAN_TIMEOUT_MS` (default 45 seconds).
+The default `QUESTION_PLAN_PROVIDER=mock` is immediate and deterministic even when an OpenAI key exists. Set `QUESTION_PLAN_PROVIDER=openai` to require live web-backed planning and surface provider failures, or `QUESTION_PLAN_PROVIDER=auto` to try OpenAI and fall back to mock after a transient failure or timeout. Live category planning performs mandatory web research and is bounded by `QUESTION_PLAN_TIMEOUT_MS` (default 45 seconds).
 
 Verification:
 

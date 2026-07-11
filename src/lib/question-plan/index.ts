@@ -19,7 +19,7 @@ class AutoQuestionPlanProvider implements QuestionPlanProvider {
 }
 
 export function getQuestionPlanProvider(): QuestionPlanProvider {
-  const configured = (process.env.QUESTION_PLAN_PROVIDER ?? "auto").toLowerCase();
+  const configured = (process.env.QUESTION_PLAN_PROVIDER ?? "mock").toLowerCase();
   if (configured === "mock") return new MockQuestionPlanProvider();
   if (configured === "openai") {
     if (!process.env.OPENAI_API_KEY) throw new Error("QUESTION_PLAN_PROVIDER=openai requires OPENAI_API_KEY");

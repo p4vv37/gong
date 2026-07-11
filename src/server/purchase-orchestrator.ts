@@ -18,15 +18,24 @@ const DEFAULT_USER_ID = "10000000-0000-4000-8000-000000000002";
 const DEFAULT_ADDRESS_ID = "10000000-0000-4000-8000-000000000004";
 
 function baseUrl() {
-  return (process.env.PURCHASE_ORCHESTRATOR_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+  const configured = (process.env.PURCHASE_ORCHESTRATOR_URL ?? "http://127.0.0.1:8000").trim();
+  const normalized = /^https?:\/\//i.test(configured) ? configured : `http://${configured}`;
+  return new URL(normalized).toString().replace(/\/$/, "");
 }
 
 async function orchestratorFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl()}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  const url = `${baseUrl()}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (error) {
+    const cause = error instanceof Error && error.cause instanceof Error ? `: ${error.cause.message}` : "";
+    throw new Error(`Purchase Orchestrator is unreachable at ${url}: ${String(error)}${cause}`);
+  }
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Purchase Orchestrator ${response.status}: ${body}`);

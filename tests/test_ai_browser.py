@@ -90,3 +90,29 @@ def test_irreversible_controls_are_blocked(text: str) -> None:
 )
 def test_add_to_cart_controls_are_recognized_for_quantity_guard(candidate: dict) -> None:
     assert AiAssistedBrowserAdapter._is_add_to_cart_candidate(candidate)
+
+
+@pytest.mark.parametrize(
+    ("label", "priority"),
+    [
+        ("Potwierdzam wymagane", 0),
+        ("  Tylko niezbędne  ", 0),
+        ("Reject all", 0),
+        ("Potwierdzam wszystkie", 1),
+    ],
+)
+def test_cookie_consent_choices_are_ranked_privacy_first(label: str, priority: int) -> None:
+    assert AiAssistedBrowserAdapter._cookie_consent_priority(label) == priority
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Analityczne pliki cookie",
+        "Reklamowe pliki cookie",
+        "Polityka prywatności",
+        "Ustawienia cookies",
+    ],
+)
+def test_cookie_preference_controls_are_not_treated_as_confirmation(label: str) -> None:
+    assert AiAssistedBrowserAdapter._cookie_consent_priority(label) is None
