@@ -1,4 +1,6 @@
 import { Agent, Runner, webSearchTool } from "@openai/agents";
+import { OpenAIProvider } from "@openai/agents-openai";
+import OpenAI from "openai";
 import type { QuestionPlanProvider } from "./provider";
 import { questionPlanSchema, type QuestionPlanRequest } from "./schema";
 
@@ -10,6 +12,7 @@ Your job is to research the current product category, resolve time-sensitive lan
 Rules:
 - Assume a normal consumer purchase unless the request explicitly indicates B2B, wholesale, sourcing, or supplier evaluation.
 - You MUST use web search before producing the plan. Prefer current manufacturer product-family pages and other authoritative primary sources for available generations, tiers, capacities, sizes and compatibility.
+- The user is actively waiting: use at most TWO web searches, then commit to the plan with what you have.
 - Resolve relative language such as newest, latest, current generation or this year's from current sources, never from model memory.
 - Treat relative product language as potentially ambiguous. Research the current taxonomy and determine whether interpretations such as most recently released item, current generation/family, or highest-tier current item would produce different eligible products. If they would, do not silently choose an interpretation: ask one high-priority, product-specific question using only sourced current options. Add a resolved constraint only for facts shared by every still-valid interpretation, and include its supporting source URL.
 - Never encode a brand's model names, tier names, capacities or configurations in the instructions. All offered variants must come from the current research performed for this request.
@@ -31,46 +34,86 @@ Rules:
 - State important assumptions instead of silently treating them as facts.
 `.trim();
 
+// hedge variant: no web access. Must never pretend to know the current
+// market — relative language becomes a question or a stated assumption.
+const unsearchedInstructions = `${instructions}
+
+Web search is UNAVAILABLE for this run:
+- Do not fabricate current model names, generations, capacities or "latest" facts.
+- When the request uses relative language (newest, latest, current), turn it into a question or an explicit assumption instead of resolving it.
+- Leave sources empty and only offer choices that are timelessly valid for the category.`;
+
+/** Elicitation latency budget: the searched plan gets this long before the unsearched hedge answers instead. */
+const SEARCHED_DEADLINE_MS = 15_000;
+
 export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
   async createPlan(input: QuestionPlanRequest) {
-    const timeoutMs = Number(process.env.QUESTION_PLAN_TIMEOUT_MS ?? "45000");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(new Error("Question-plan provider timed out")), timeoutMs);
-    const agent = new Agent({
-      name: "Purchase category researcher",
-      instructions,
-      model: process.env.OPENAI_MODEL ?? "gpt-5.6",
-      outputType: questionPlanSchema,
-      tools: [webSearchTool({
-        searchContextSize: "low",
-        externalWebAccess: true,
-        userLocation: { type: "approximate", country: "PL", timezone: "Europe/Warsaw" },
-      })],
-      modelSettings: { toolChoice: "required" },
-    });
-
+    // no client retries: the OpenAI edge intermittently 520s with
+    // retry-after: 60, and the default client silently sleeps on it —
+    // failing fast into the fallbacks beats a hidden minute of waiting
     const runner = new Runner({
       workflowName: "purchase-question-plan",
       traceIncludeSensitiveData: false,
+      modelProvider: new OpenAIProvider({
+        openAIClient: new OpenAI({ maxRetries: 0 }),
+      }),
     });
-    let result;
-    try {
-      result = await runner.run(
-        agent,
-        `Current date: ${new Date().toISOString().slice(0, 10)}. Create the researched decision plan for this request:\n${JSON.stringify(input, null, 2)}`,
-        { maxTurns: 4, signal: controller.signal },
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
 
-    if (!result.finalOutput) {
-      throw new Error("The category researcher returned no structured plan.");
-    }
+    const prompt =
+      `Current date: ${new Date().toISOString().slice(0, 10)}. Create the researched decision plan for this request:\n` +
+      JSON.stringify(input, null, 2);
 
-    return {
-      plan: questionPlanSchema.parse(result.finalOutput),
-      provider: "openai" as const,
+    const makeAgent = (searched: boolean) =>
+      new Agent({
+        name: "Purchase category researcher",
+        instructions: searched ? instructions : unsearchedInstructions,
+        // fast tier, same convention as the pipeline agents. Deliberately NOT
+        // OPENAI_MODEL: that env selects the full-size model, which needs
+        // minutes per web-search turn and gets killed by the OpenAI edge
+        // (HTTP 520) before it can answer
+        model: process.env.OPENAI_MODEL_FAST ?? "gpt-5.6-luna",
+        outputType: questionPlanSchema,
+        tools: searched
+          ? [webSearchTool({
+              searchContextSize: "low",
+              externalWebAccess: true,
+              userLocation: { type: "approximate", country: "PL", timezone: "Europe/Warsaw" },
+            })]
+          : [],
+        // the user is waiting on this call: cheapest effort compatible with
+        // web_search, terse output
+        modelSettings: { reasoning: { effort: "low" }, text: { verbosity: "low" } },
+      });
+
+    // streamed so the connection is never silent — long quiet responses get
+    // dropped by the API edge with an empty 520 mid-run
+    const runPlan = async (searched: boolean) => {
+      const result = await runner.run(makeAgent(searched), prompt, { maxTurns: 8, stream: true });
+      await result.completed;
+      if (!result.finalOutput) throw new Error("The category researcher returned no structured plan.");
+      return { plan: questionPlanSchema.parse(result.finalOutput), provider: "openai" as const };
     };
+
+    // hedge: hosted web search is slow/unstable some days, so the searched
+    // plan races a deadline while a search-free plan runs concurrently.
+    // Preference order: searched → unsearched; both failing throws, and the
+    // caller (ResilientQuestionPlanProvider) serves the mock plan.
+    const searched = runPlan(true);
+    const unsearched = runPlan(false);
+    unsearched.catch(() => {}); // may lose the race unconsumed — not an unhandled rejection
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        searched,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`searched plan exceeded ${SEARCHED_DEADLINE_MS}ms`)), SEARCHED_DEADLINE_MS);
+        }),
+      ]);
+    } catch (searchedError) {
+      console.warn(`question-plan: searched run lost the race, using unsearched hedge — ${String(searchedError)}`);
+      return await unsearched;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

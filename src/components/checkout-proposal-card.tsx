@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API, type CheckoutProposal } from "@/contract/http";
 
 type CheckoutProposalCardProps = {
@@ -18,6 +18,14 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [orderAcknowledged, setOrderAcknowledged] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function decide(approve: boolean) {
     setDeciding(true);
@@ -95,7 +103,11 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
         />
         <span>
           <strong>I understand that approval starts the configured purchase adapter.</strong>
-          With PURCHASE_ADAPTER=dummy this is a safe fake purchase. Browser or real adapters may contact the merchant.
+          {proposal.adapter === "ai_browser"
+            ? " Configured adapter: ai_browser — a visible browser will walk the merchant's checkout. It cannot click payment or place-order buttons and stops for your action."
+            : proposal.adapter && proposal.adapter !== "dummy"
+              ? ` Configured adapter: ${proposal.adapter} — this may contact the merchant.`
+              : " Configured adapter: dummy — a safe fake purchase, no merchant contact, no payment."}
         </span>
       </label>
       <label className="rejection-reason">

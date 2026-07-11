@@ -29,6 +29,8 @@ export type CheckoutProposal = {
   paymentMethod?: string;
   returnSummary?: string; // "30 days, free returns"
   unknowns: string[]; // anything we could NOT verify, shown before approval
+  /** which purchase adapter approval will start (PURCHASE_ADAPTER: "dummy", "ai_browser", …) */
+  adapter?: string;
   proposedAt: string;
   expiresAt: string; // proposals go stale; prices drift
   status: CheckoutProposalStatus;

@@ -56,6 +56,7 @@ export function createProposal(result: RecommendationSet, offerId: string): Chec
       ? `${policy.returns.value.windowDays} days${policy.returns.value.freeReturns ? ", free returns" : ""}`
       : undefined,
     unknowns,
+    adapter: process.env.PURCHASE_ADAPTER ?? "dummy",
     proposedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + PROPOSAL_TTL_MS).toISOString(),
     status: "proposed",
