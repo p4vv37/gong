@@ -301,10 +301,6 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             # inside a consent modal instead of closing it.
             self._dismiss_cookie_consent(page)
             self._dismiss_nonessential_overlays(page)
-            self._complete_street_number_modal(page, approved_values)
-            if successful_cart_adds:
-                self._continue_from_cart_modal(page)
-                self._dismiss_nonessential_overlays(page)
             if self._is_payment_or_final_order_page(page):
                 print("[ai-browser] Reached checkout boundary; waiting for user action.")
                 return
@@ -457,40 +453,8 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         return CheckoutValidationResult(valid=not reasons, reasons=reasons)
 
     @staticmethod
-    def _is_cart_modal_continue_label(text: str) -> bool:
-        normalized = " ".join(text.casefold().split())
-        return normalized in {
-            "przejdź do koszyka",
-            "realizuj zakup",
-            "zobacz koszyk",
-            "go to cart",
-            "view cart",
-            "proceed to checkout",
-            "checkout",
-        }
-
-    def _continue_from_cart_modal(self, page: Page) -> bool:
-        """Use the cart/checkout action inside a visible add-to-cart confirmation modal."""
-        modal = page.locator('[role="dialog"], #modal.--added, .modal.--added').filter(visible=True)
-        if not modal.count():
-            return False
-        controls = modal.locator('button, a, [role="button"]')
-        for index in range(controls.count()):
-            control = controls.nth(index)
-            try:
-                label = control.inner_text(timeout=500).strip()
-                if control.is_visible() and self._is_cart_modal_continue_label(label):
-                    control.click(timeout=5_000)
-                    print(f"[ai-browser] Continued from cart modal via: {label}")
-                    self._wait_for_interactive_state(page, minimum_wait_ms=1_000)
-                    return True
-            except PlaywrightError:
-                continue
-        return False
-
-    @staticmethod
     def _dismiss_nonessential_overlays(page: Page) -> bool:
-        """Close marketing and postcode interruptions without accepting or submitting data."""
+        """Remove a third-party marketing overlay without accepting or submitting data."""
         dismissed = False
         try:
             marketing = page.locator(
@@ -502,43 +466,9 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         except PlaywrightError:
             pass
 
-        for _ in range(3):
-            try:
-                postcode_visible = page.locator('#modal.--zipcode').filter(visible=True).count()
-            except PlaywrightError:
-                postcode_visible = 0
-            if not postcode_visible:
-                break
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(300)
-            dismissed = True
         if dismissed:
-            print("[ai-browser] Dismissed a non-checkout overlay")
+            print("[ai-browser] Dismissed a marketing overlay")
         return dismissed
-
-    @staticmethod
-    def _complete_street_number_modal(page: Page, approved_values: dict[str, str]) -> bool:
-        """Complete a split house-number prompt using only the Advisor address_line1 value."""
-        house_number = approved_values.get("delivery.house_number")
-        if not house_number:
-            return False
-        modal = page.locator('#modal.--street-number').filter(visible=True)
-        if not modal.count():
-            return False
-        field = modal.locator('input').filter(visible=True).first
-        if not field.count():
-            return False
-        field.fill(house_number)
-        controls = modal.locator('button, a, [role="button"]').filter(visible=True)
-        for index in range(controls.count()):
-            control = controls.nth(index)
-            label = control.inner_text(timeout=500).strip().casefold()
-            if label in {"zapisz", "potwierdź", "dalej", "save", "confirm"}:
-                control.click(timeout=5_000)
-                print("[ai-browser] Completed house number from Advisor address_line1")
-                page.wait_for_timeout(500)
-                return True
-        return False
 
     @staticmethod
     def _cookie_consent_priority(text: str) -> int | None:
