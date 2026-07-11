@@ -26,11 +26,20 @@ export function shippingWindows(text: string, radius = 120): string[] {
   return windows;
 }
 
-/** Cheapest shipping cost mentioned in shipping-context windows only. */
-export function parseShippingCost(text: string): number | undefined {
-  const costs = shippingWindows(text)
-    .map((w) => parseZl(w))
-    .filter((n): n is number => n !== undefined && n >= 0 && n < 200); // >200 zł is a threshold or unrelated amount, not domestic shipping
+const SHIPPING_KEYWORD = /dostaw\w*|wysyłk\w*|wysylk\w*|przesyłk\w*|shipping|delivery|kurier\w*|inpost|paczkomat\w*/gi;
+
+/**
+ * Cheapest plausible shipping cost — only amounts whose position in the text
+ * is near a shipping keyword (index intersection, so numbers are never
+ * truncated by window slicing).
+ */
+export function parseShippingCost(text: string, radius = 60): number | undefined {
+  const keywordIdx = [...text.matchAll(SHIPPING_KEYWORD)].map((m) => m.index ?? 0);
+  if (!keywordIdx.length) return undefined;
+  const costs = [...text.matchAll(/(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:zł|pln)/gi)]
+    .filter((m) => keywordIdx.some((k) => Math.abs((m.index ?? 0) - k) <= radius))
+    .map((m) => Number(m[1].replace(/\s/g, "").replace(",", ".")))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n < 200); // ≥200 zł is a threshold or unrelated amount, not domestic shipping
   return costs.length ? Math.min(...costs) : undefined;
 }
 
