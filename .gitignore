@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.pytest_cache/
 
 # next.js
 /.next/
@@ -41,7 +42,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# research pipeline: recorded external responses (commit goldens deliberately)
-data/cache/
-data/runs/
-data/orders/
+# runtime data: research cache/runs/orders + orchestrator artifacts
+# (goldens get committed deliberately via git add -f)
+data/
+artifacts/
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+replay_pid*
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
