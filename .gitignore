@@ -43,3 +43,5 @@ next-env.d.ts
 
 # research pipeline: recorded external responses (commit goldens deliberately)
 data/cache/
+data/runs/
+data/orders/

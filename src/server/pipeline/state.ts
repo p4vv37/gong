@@ -21,6 +21,8 @@ export type RunState = {
   reviews: ReviewEvidence[];
   /** discovery leftovers worth scraping: url → why */
   candidateUrls: Map<string, string>;
+  /** LLM fit verdicts: offerId → criterionId → verdict (set by agents/fit-judge) */
+  fitJudgments?: Map<string, Map<string, "matched" | "contradicted" | "unknown">>;
 };
 
 export function newRunState(runId: string, request: ResearchRequest): RunState {

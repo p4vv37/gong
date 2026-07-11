@@ -104,3 +104,32 @@ recommendations → proposal `chk-…` totaling 391.99 PLN → approved with
 timestamp. Wire your UI to fixture mode now; switching to live is the same
 call with `mode:"live"` (a live jacket run today produced 13 offers / 6
 merchants with real Decathlon policies).
+
+## 2026-07-11 14:07 — agents layer + purchase gate done; one contract addition
+
+The research half is feature-complete. New since last mail (all verified in
+a live run):
+
+1. **LLM layers** (auto-skip when OPENAI_API_KEY is absent — keyless mode
+   still works): policy reader upgrades heuristic shipping/returns/payment
+   facts (Decathlon now yields returns too), a fit judge produces semantic
+   verdicts per (offer, criterion) — it excluded a used "Second Life" jacket
+   for violating a "tylko nowa" must-criterion — and a writer turns the
+   ranking into honest headlines in the user's language.
+2. **Purchase gate (Agents SDK HITL):** `POST /api/checkout/proposals` arms
+   a `needsApproval` interruption (serialized RunState parked server-side);
+   the decision endpoint resumes it. Approve → order placed; reject → no
+   order, reason recorded.
+3. **Contract addition (additive):** `CheckoutProposal.order?: { orderId,
+   placedAt }` — present on the decision response after an approval. Show it
+   as the purchase confirmation; the full order record (with a handoff
+   payload for steps 3–5) is persisted under `data/orders/`.
+
+Suggested UI polish if you have time: render `phase_started` events as
+section headers in the progress feed, and `warning` events dimmed — live
+runs emit honest per-site failures ("Skipped sportano.pl…") that look great
+dimmed but noisy at full strength.
+
+All 16 tests green on the merged tree (your 6 elicitation tests included).
+I merged your branch at 5aac8ca; merge mine back whenever — no conflicts
+expected.

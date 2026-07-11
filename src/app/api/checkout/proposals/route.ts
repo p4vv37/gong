@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ProposeCheckoutRequest } from "../../../../contract";
+import { startPurchaseGate } from "../../../../server/agents/purchase-gate";
 import { createProposal } from "../../../../server/checkout";
 import { getRun } from "../../../../server/pipeline/run";
 
@@ -17,5 +18,13 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const proposal = createProposal(run.result, body.offerId ?? "");
   if ("error" in proposal) return NextResponse.json(proposal, { status: 400 });
+
+  // Arm the Agents-SDK consent gate: the purchase run pauses on needsApproval
+  // and its RunState is parked until the user's decision.
+  try {
+    await startPurchaseGate(proposal);
+  } catch {
+    // gate failures must never place orders; the keyless path still enforces consent
+  }
   return NextResponse.json(proposal, { status: 201 });
 }
