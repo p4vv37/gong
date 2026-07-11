@@ -4,6 +4,7 @@ import json
 import os
 import hashlib
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -50,7 +51,30 @@ class BrowserStepResult(BaseModel):
     page_url: str
 
 
+class CheckoutSnapshot(BaseModel):
+    product_title: str = Field(min_length=1, max_length=500)
+    variant: str | None = Field(default=None, max_length=255)
+    quantity: int = Field(ge=1, le=100)
+    item_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
+    shipping_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
+    tax_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
+    total_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
+    currency: str = Field(min_length=3, max_length=3)
+    product_evidence: str = Field(min_length=1, max_length=500)
+    quantity_evidence: str = Field(min_length=1, max_length=200)
+    total_evidence: str = Field(min_length=1, max_length=200)
+
+
+class CheckoutValidationResult(BaseModel):
+    valid: bool
+    reasons: list[str]
+
+
 class BrowserRunError(RuntimeError):
+    pass
+
+
+class CheckoutValidationError(BrowserRunError):
     pass
 
 
@@ -150,6 +174,39 @@ class OpenAiBrowserPlanner:
             return response.output_parsed
         except Exception as exc:
             raise BrowserRunError("The browser planner request failed") from exc
+
+    def read_checkout_snapshot(self, *, page_url: str, visible_text: str) -> CheckoutSnapshot:
+        prompt = {
+            "page_url": page_url,
+            "visible_checkout_text": visible_text[:30_000],
+            "instructions": [
+                "Extract only values explicitly visible in the checkout summary.",
+                "Amounts must be decimal numbers without currency symbols.",
+                "item_amount is the displayed product line amount for one item.",
+                "Use 0 for shipping or tax only when the page explicitly says free, included, or displays zero.",
+                "Copy short exact visible snippets into evidence fields.",
+                "Do not infer missing values and do not use expected purchase data.",
+            ],
+        }
+        try:
+            response = self.client.responses.parse(
+                model=self.model,
+                input=[
+                    {
+                        "role": "system",
+                        "content": "You extract a factual checkout snapshot from visible page text. Never invent values.",
+                    },
+                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+                ],
+                text_format=CheckoutSnapshot,
+            )
+            if response.output_parsed is None:
+                raise CheckoutValidationError("Checkout reader returned no structured snapshot")
+            return response.output_parsed
+        except CheckoutValidationError:
+            raise
+        except Exception as exc:
+            raise CheckoutValidationError("Checkout snapshot extraction failed") from exc
 
 
 class AiAssistedBrowserAdapter(PurchaseAdapter):
