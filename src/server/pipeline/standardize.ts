@@ -2,6 +2,7 @@ import { fcMap, fcScrape } from "../connectors/firecrawl";
 import { extractProductJsonLd, fetchHtml } from "../connectors/jsonld";
 import { buildQuery } from "./discover";
 import { domainOf } from "./ids";
+import { LIMITS } from "./limits";
 import { fromFcProduct, fromJsonLd } from "./normalize";
 import { applyNormalized, type Emit } from "./run-helpers";
 import type { RunState } from "./state";
@@ -13,24 +14,27 @@ import type { RunState } from "./state";
  *   rung 2 — Firecrawl `product` format (handles 403s and JS-rendered pages)
  */
 
-const LADDER_CONCURRENCY = 4;
-const LISTING_EXPANSIONS = 3; // domains
-const PRODUCTS_PER_LISTING = 2;
-
 const PRODUCT_PATH = /\/(p|produkt|product|prod)\/|-\d{4,}|\/dp\//i;
+
+/** Domains that are never shops — don't waste scrapes or warnings on them. */
+const NON_SHOP_DOMAINS =
+  /(^|\.)((reddit|youtube|facebook|instagram|tiktok|x|twitter|wikipedia|nytimes|theguardian|forbes|onet|wp|interia|gazeta)\.(com|org|pl)|bikeradar\.com|medium\.com|quora\.com)$/i;
+
+/** Price string anywhere in the HTML — cheap "is this a shop page at all" signal. */
+const PRICE_PATTERN = /\d[\d\s]*[.,]\d{2}\s*(zł|PLN|€|EUR)|\d[\d\s]*\s*(zł|PLN)\b/;
 
 async function expandListings(state: RunState, emit: Emit): Promise<void> {
   const listingDomains = [...state.candidateUrls.keys()]
-    .filter((u) => looksLikeListing(u))
+    .filter((u) => looksLikeListing(u) && !NON_SHOP_DOMAINS.test(domainOf(u)))
     .map((u) => domainOf(u));
-  const unique = [...new Set(listingDomains)].slice(0, LISTING_EXPANSIONS);
+  const unique = [...new Set(listingDomains)].slice(0, LIMITS.listingExpansions());
   const query = buildQuery(state.request.brief);
 
   await Promise.all(
     unique.map(async (domain) => {
       try {
         const links = await fcMap(`https://${domain}`, query);
-        const productUrls = links.map((l) => l.url).filter((u) => PRODUCT_PATH.test(u)).slice(0, PRODUCTS_PER_LISTING);
+        const productUrls = links.map((l) => l.url).filter((u) => PRODUCT_PATH.test(u)).slice(0, LIMITS.productsPerListing());
         for (const u of productUrls) {
           if (!state.candidateUrls.has(u)) state.candidateUrls.set(u, `expanded from ${domain} listing`);
         }
@@ -47,8 +51,8 @@ async function expandListings(state: RunState, emit: Emit): Promise<void> {
 export async function standardize(state: RunState, emit: Emit): Promise<void> {
   await expandListings(state, emit);
   const urls = [...state.candidateUrls.keys()]
-    .filter((u) => !looksLikeListing(u))
-    .slice(0, state.request.limits?.maxCandidates ?? 12);
+    .filter((u) => !looksLikeListing(u) && !NON_SHOP_DOMAINS.test(domainOf(u)))
+    .slice(0, state.request.limits?.maxCandidates ?? LIMITS.maxCandidates());
   const queue = [...urls];
 
   async function worker(): Promise<void> {
@@ -64,6 +68,12 @@ export async function standardize(state: RunState, emit: Emit): Promise<void> {
             emit({ type: "offer_normalized", offerId: n.offer.id, extractionSource: "jsonld", label: `${n.merchant.domain}: read structured data (price ${n.offer.price.value?.amount ?? "?"} ${n.offer.price.value?.currency ?? ""})` });
             continue;
           }
+          // classifier: fetched fine but no Product JSON-LD and no price anywhere
+          // → editorial/brand page; don't spend a rung-2 scrape on it
+          if (!PRICE_PATTERN.test(page.html) && !PRODUCT_PATH.test(url)) {
+            emit({ type: "warning", detail: `non-shop page: ${url}`, label: `Skipped ${domainOf(url)} (not a shop page)` });
+            continue;
+          }
         }
         // rung 2 — Firecrawl product format
         const doc = await fcScrape(url, ["product"]);
@@ -73,14 +83,14 @@ export async function standardize(state: RunState, emit: Emit): Promise<void> {
           emit({ type: "offer_normalized", offerId: n.offer.id, extractionSource: "firecrawl_product", label: `${n.merchant.domain}: extracted product data` });
           continue;
         }
-        emit({ type: "warning", detail: `no product extracted: ${url}`, label: `Skipped ${new URL(url).hostname} (listing or unreadable page)` });
+        emit({ type: "warning", detail: `no product extracted: ${url}`, label: `Skipped ${domainOf(url)} (listing or unreadable page)` });
       } catch (err) {
         emit({ type: "warning", detail: String(err), label: `Failed to read ${url.slice(0, 60)}` });
       }
     }
   }
 
-  await Promise.all(Array.from({ length: LADDER_CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: LIMITS.ladderConcurrency() }, worker));
 }
 
 function looksLikeListing(url: string): boolean {

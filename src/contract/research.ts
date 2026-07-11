@@ -41,6 +41,13 @@ export type Field<T> = {
   observedAt: string; // ISO timestamp
   evidenceUrl?: string;
   evidenceText?: string; // short quote supporting the claim
+  /**
+   * Set on unknown fields we looked for but could not establish: WHY it is
+   * unknown and at which depth it could still resolve (e.g. exact shipping
+   * often appears only at cart stage). UI renders these as "deferred", never
+   * as silent negatives.
+   */
+  deferred?: { reason: string; resolvableAt: DepthLevel };
 };
 
 // ---------------------------------------------------------------------------

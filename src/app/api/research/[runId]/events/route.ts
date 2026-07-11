@@ -1,4 +1,4 @@
-import { getRun, subscribe } from "../../../../../server/pipeline/run";
+import { loadRun, subscribe } from "../../../../../server/pipeline/run";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ runId: string }> }): Promise<Response> {
   const { runId } = await ctx.params;
-  if (!getRun(runId)) {
+  if (!(await loadRun(runId))) {
     return new Response(JSON.stringify({ error: "unknown run" }), { status: 404 });
   }
 

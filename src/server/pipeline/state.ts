@@ -89,6 +89,38 @@ export function upsertOffer(state: RunState, o: Offer): Offer {
   return existing;
 }
 
+/**
+ * Rebuild working state from a stored result — powers on-demand deepening
+ * after the original run finished (or after a server restart). LLM fit
+ * verdicts are reconstructed from the stored assessments: recorded
+ * criterion violations → contradicted, must-criteria absent from unknowns →
+ * matched. Prefer-criteria verdicts fall back to keyword matching (small,
+ * acceptable score drift).
+ */
+export function hydrateState(runId: string, request: ResearchRequest, result: RecommendationSet): RunState {
+  const state = newRunState(runId, request);
+  for (const [k, v] of Object.entries(result.products)) state.products.set(k, v);
+  for (const [k, v] of Object.entries(result.variants)) state.variants.set(k, v);
+  for (const [k, v] of Object.entries(result.merchants)) state.merchants.set(k, v);
+  for (const [k, v] of Object.entries(result.policies)) state.policies.set(k, v);
+  for (const [k, v] of Object.entries(result.offers)) state.offers.set(k, v);
+  state.reviews = [...result.reviews];
+
+  state.fitJudgments = new Map();
+  const mustLabels = new Map(request.brief.criteria.filter((c) => c.kind === "must").map((c) => [c.id, c.label]));
+  for (const a of Object.values(result.assessments)) {
+    const m = new Map<string, "matched" | "contradicted" | "unknown">();
+    for (const v of a.violations) {
+      if (mustLabels.has(v.criterionId)) m.set(v.criterionId, "contradicted");
+    }
+    for (const [id, label] of mustLabels) {
+      if (!m.has(id)) m.set(id, a.unknowns.includes(`must:${label}`) ? "unknown" : "matched");
+    }
+    state.fitJudgments.set(a.offerId, m);
+  }
+  return state;
+}
+
 export function toRecommendationSet(
   state: RunState,
   extra: Pick<RecommendationSet, "assessments" | "recommendations" | "roundsCompleted">,

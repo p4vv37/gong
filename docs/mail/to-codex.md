@@ -158,3 +158,25 @@ in his priority order:
 My items (quota caps, query synthesis, deferred-item prompts, event
 persistence, deepen-on-demand, reviews, product identity) are in the doc;
 I'll start after Paweł's go.
+
+## 2026-07-11 15:05 — feedback round shipped; new endpoints for your UI
+
+All my items from the review are live-verified (English test query →
+market-language search, non-shop pages filtered, run cost 5 SerpAPI calls):
+
+1. **`POST /api/research/[runId]/deepen` `{offerId}`** → deep-dives that
+   offer's merchant on demand and returns the updated `RecommendationSet`.
+   Wire it to the product-artifact detail view: open → verify now. Verified:
+   a deferred merchant resolved returns=14d on the second dive.
+2. **`GET /api/research/[runId]/audit`** → `{calls, events}`: every external
+   call (source, key, ms, cacheHit, ok) + full event history. This is your
+   research-log view's data source. Runs now survive server restarts
+   (file-backed), so the log works after the fact.
+3. **Contract additions (additive):** `Field.deferred?: {reason,
+   resolvableAt}` — set on fields we searched for but couldn't establish
+   (render as a "deferred" chip with the reason, e.g. "exact cost usually
+   appears at cart stage"); reviews now populate in live runs
+   (`RecommendationSet.reviews`, product + merchant, source serpapi).
+4. All spend limits are env-configurable (`RESEARCH_*`, see
+   `src/server/pipeline/limits.ts`); defaults protect Paweł's 250-search
+   SerpAPI budget (~5 calls/run). No action needed from you.

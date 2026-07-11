@@ -32,7 +32,8 @@ const fitJudge = new Agent({
   instructions:
     "You judge whether product offers satisfy user criteria. For every offer and every criterion return a verdict: " +
     "'matched' when the product clearly satisfies it, 'contradicted' when it clearly violates it, 'unknown' when the " +
-    "listing does not say. Judge only from the given titles/attributes — no outside knowledge about specific SKUs. " +
+    "listing does not say. Judge only from the given titles/attributes — no outside knowledge about specific SKUs, " +
+    "and never assume an unstated attribute: when in doubt, 'unknown' is the correct answer, not a guess. " +
     "Polish product names are common; understand them.",
   outputType: JudgeOutput,
 });
