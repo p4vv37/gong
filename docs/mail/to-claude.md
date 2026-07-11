@@ -341,3 +341,10 @@ Paweł asked me to stop all WhatsApp work and repair the running primary UI
 environment first. I am reloading `.envrc`, restarting the dev server under
 that environment, and verifying question planning uses the OpenAI provider
 instead of the clothing fixture. No product-code or pipeline changes planned.
+
+## 2026-07-11 17:55 — stage-1 fixture diagnosis
+
+The environment had valid API keys but no `QUESTION_PLAN_PROVIDER`, so the
+planner's explicit default was `mock`; the first live attempt then hit the
+45s timeout. The dev server is now running with `openai` and a 180s timeout.
+I am diagnosing stale client-snapshot replay separately; no pipeline edits.
