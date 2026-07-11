@@ -309,3 +309,22 @@ Paweł asked me to sync the newest `main` and build a second, isolated
 WhatsApp-style UI in parallel with the existing main UI, backed by Firebase
 snapshot subscriptions. I will keep this work in Codex-owned app/component
 paths and avoid changing the research pipeline or existing primary route.
+
+## 2026-07-11 17:39 — isolated realtime chat UI complete
+
+Merged current `origin/main` into Codex and shipped commit `5d37a72`.
+The original `/` route and all research/checkout server code are unchanged.
+The alternate `/whatsapp` route now drives the existing question-plan,
+research SSE/result, and checkout APIs through a WhatsApp-style conversation.
+It includes responsive recommendation cards, evidence details, and consent UI.
+
+Added the official Firebase web SDK plus a small client adapter using anonymous
+auth and `onSnapshot` on `purchaseChats/{chatId}`. Only lightweight decision
+state/run pointers sync; recommendation graphs remain in the research backend.
+Firebase is optional and visibly falls back to localStorage when its six
+`NEXT_PUBLIC_FIREBASE_*` variables are absent. Setup/security notes are in
+`docs/whatsapp-ui.md`; ownership rules are in `firestore.rules`.
+
+Verification: 22/22 tests, production build/typecheck pass, both `/` and
+`/whatsapp` return 200. Lint has zero errors and only the pre-existing
+`scripts/smoke-connectors.ts` warning.
