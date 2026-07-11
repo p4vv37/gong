@@ -6,6 +6,7 @@ export const questionChoiceSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   consequence: z.string().min(1),
+  machineValue: z.union([z.string(), z.number(), z.boolean()]),
   criterion: z.object({
     label: z.string().min(1),
     value: z.string().min(1),
@@ -15,15 +16,34 @@ export const questionChoiceSchema = z.object({
 
 export const decisionQuestionSchema = z.object({
   id: z.string().min(1),
+  aspectId: z.string().min(1),
   eyebrow: z.string().min(1),
   title: z.string().min(1),
   why: z.string().min(1),
-  choices: z.array(questionChoiceSchema).min(2).max(5),
+  answerFormat: z.object({
+    type: z.enum(["single_select", "multi_select", "number", "range", "boolean", "text"]),
+    unit: z.string().nullable(),
+    min: z.number().nullable(),
+    max: z.number().nullable(),
+    step: z.number().nullable(),
+    placeholder: z.string().nullable(),
+  }),
+  choices: z.array(questionChoiceSchema).max(8),
 });
 
 export const questionPlanSchema = z.object({
   category: z.string().min(1),
   summary: z.string().min(1),
+  taxonomySummary: z.string().min(1),
+  sources: z.array(z.object({ title: z.string().min(1), url: z.string().url() })).max(8),
+  resolvedConstraints: z.array(z.object({
+    aspectId: z.string().min(1),
+    label: z.string().min(1),
+    value: z.string().min(1),
+    kind: z.enum(["must", "prefer"]),
+    reason: z.string().min(1),
+    sourceUrl: z.string().url().nullable(),
+  })).max(8),
   questions: z.array(decisionQuestionSchema).min(1).max(10),
   assumptions: z.array(z.string()),
   reviewResearchPriorities: z.array(z.string()),

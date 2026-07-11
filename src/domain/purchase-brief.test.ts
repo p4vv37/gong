@@ -29,6 +29,26 @@ describe("purchase brief", () => {
     expect(updated.criteria[0]).toMatchObject({ value: "Room for a thick sweater", kind: "prefer", source: "answer" });
   });
 
+  it("keeps multiple acceptable variants as one explicit criterion", () => {
+    const brief = createPurchaseBrief("A phone", 20);
+    const question = {
+      id: "storage",
+      aspectId: "storage-capacity",
+      eyebrow: "Storage",
+      title: "Which capacities work?",
+      why: "This changes the exact variant.",
+      answerFormat: { type: "multi_select" as const, unit: null, min: null, max: null, step: null, placeholder: null },
+      choices: [
+        { id: "256", label: "256 GB", consequence: "Lower price", machineValue: 256, criterion: { label: "Storage", value: "256 GB", kind: "prefer" as const } },
+        { id: "512", label: "512 GB", consequence: "More headroom", machineValue: 512, criterion: { label: "Storage", value: "512 GB", kind: "prefer" as const } },
+      ],
+    };
+    const updated = applyQuestionAnswer(brief, question, question.choices, 1);
+
+    expect(updated.criteria[0]).toMatchObject({ label: "Storage", value: "256 GB, 512 GB", kind: "prefer" });
+    expect(updated.readyForSearch).toBe(true);
+  });
+
   it("uses warranted depth to control question cost", () => {
     expect(questionsForDepth(10)).toHaveLength(3);
     expect(questionsForDepth(50)).toHaveLength(5);

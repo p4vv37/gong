@@ -32,6 +32,10 @@ export function PurchaseWorkbench() {
   const [planning, setPlanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customAnswer, setCustomAnswer] = useState("");
+  const [rangeAnswer, setRangeAnswer] = useState({ min: "", max: "" });
+  const [multiAnswerIds, setMultiAnswerIds] = useState<string[]>([]);
+  const [taxonomySummary, setTaxonomySummary] = useState<string | null>(null);
+  const [taxonomySources, setTaxonomySources] = useState<Array<{ title: string; url: string }>>([]);
   const [view, setView] = useState<"conversation" | "research" | "results">("conversation");
   const [runId, setRunId] = useState<string | null>(null);
   const [progressEvents, setProgressEvents] = useState<ProgressEvent[]>([]);
@@ -51,6 +55,8 @@ export function PurchaseWorkbench() {
         brief: PurchaseBrief;
         questions: DecisionQuestion[];
         provider: "mock" | "openai";
+        taxonomySummary?: string | null;
+        taxonomySources?: Array<{ title: string; url: string }>;
       };
       const validatedQuestions = saved.questions.map((question) => decisionQuestionSchema.parse(question));
       restoreTimer = window.setTimeout(() => {
@@ -59,6 +65,8 @@ export function PurchaseWorkbench() {
         setBrief(saved.brief);
         setQuestions(validatedQuestions);
         setProvider(saved.provider);
+        setTaxonomySummary(saved.taxonomySummary ?? null);
+        setTaxonomySources(saved.taxonomySources ?? []);
       }, 0);
     } catch {
       localStorage.removeItem("gong.purchase-session.v1");
@@ -73,9 +81,9 @@ export function PurchaseWorkbench() {
     if (!brief || questions.length === 0) return;
     localStorage.setItem(
       "gong.purchase-session.v1",
-      JSON.stringify({ request, depth, brief, questions, provider }),
+      JSON.stringify({ request, depth, brief, questions, provider, taxonomySummary, taxonomySources }),
     );
-  }, [brief, depth, provider, questions, request]);
+  }, [brief, depth, provider, questions, request, taxonomySources, taxonomySummary]);
 
   useEffect(() => {
     if (!runId || view !== "research") return;
@@ -126,9 +134,19 @@ export function PurchaseWorkbench() {
       if (!response.ok) throw new Error(payload.error ?? "Category research failed");
 
       const plan = questionPlanSchema.parse(payload.plan);
+      const nextBrief = createPurchaseBrief(request.trim(), depth);
+      const resolvedCriteria = plan.resolvedConstraints.map((constraint) => ({
+        id: `research-${constraint.aspectId}`,
+        label: constraint.label,
+        value: constraint.value,
+        kind: constraint.kind,
+        source: "inference" as const,
+      }));
       setQuestions(plan.questions);
       setProvider(payload.provider === "openai" ? "openai" : "mock");
-      setBrief({ ...createPurchaseBrief(request.trim(), depth), category: plan.category });
+      setTaxonomySummary(plan.taxonomySummary);
+      setTaxonomySources(plan.sources);
+      setBrief({ ...nextBrief, category: plan.category, criteria: [...nextBrief.criteria, ...resolvedCriteria] });
       setCustomAnswer("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Category research failed");
@@ -137,10 +155,12 @@ export function PurchaseWorkbench() {
     }
   }
 
-  function answer(choice: QuestionChoice | string) {
+  function answer(choice: QuestionChoice | QuestionChoice[] | string) {
     if (!brief || !currentQuestion) return;
     setBrief(applyQuestionAnswer(brief, currentQuestion, choice, questions.length));
     setCustomAnswer("");
+    setRangeAnswer({ min: "", max: "" });
+    setMultiAnswerIds([]);
   }
 
   function reset() {
@@ -149,6 +169,10 @@ export function PurchaseWorkbench() {
     setQuestions([]);
     setError(null);
     setCustomAnswer("");
+    setRangeAnswer({ min: "", max: "" });
+    setMultiAnswerIds([]);
+    setTaxonomySummary(null);
+    setTaxonomySources([]);
     setView("conversation");
     setRunId(null);
     setProgressEvents([]);
@@ -261,14 +285,71 @@ export function PurchaseWorkbench() {
                   <p className="eyebrow">{currentQuestion.eyebrow}</p>
                   <h2>{currentQuestion.title}</h2>
                   <p className="why-copy">{currentQuestion.why}</p>
-                  <div className="choice-grid">
-                    {currentQuestion.choices.map((choice) => (
-                      <button key={choice.id} className="choice-card" type="button" onClick={() => answer(choice)}>
-                        <strong>{choice.label}</strong>
-                        <span>{choice.consequence}</span>
+                  {(currentQuestion.answerFormat?.type ?? "single_select") === "multi_select" ? (
+                    <>
+                      <div className="choice-grid" aria-label="Select all acceptable options">
+                        {currentQuestion.choices.map((choice) => {
+                          const selected = multiAnswerIds.includes(choice.id);
+                          return (
+                            <button
+                              key={choice.id}
+                              className={`choice-card ${selected ? "choice-selected" : ""}`}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setMultiAnswerIds((current) => selected ? current.filter((id) => id !== choice.id) : [...current, choice.id])}
+                            >
+                              <strong>{choice.label}</strong><span>{choice.consequence}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button
+                        className="typed-submit"
+                        type="button"
+                        disabled={multiAnswerIds.length === 0}
+                        onClick={() => answer(currentQuestion.choices.filter((choice) => multiAnswerIds.includes(choice.id)))}
+                      >
+                        Continue with {multiAnswerIds.length || 0} selected <span>→</span>
                       </button>
-                    ))}
-                  </div>
+                    </>
+                  ) : ["number", "range"].includes(currentQuestion.answerFormat?.type ?? "") ? (
+                    <form
+                      className="numeric-answer"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const unit = currentQuestion.answerFormat?.unit ? ` ${currentQuestion.answerFormat.unit}` : "";
+                        const value = currentQuestion.answerFormat?.type === "range" ? `${rangeAnswer.min}–${rangeAnswer.max}${unit}` : `${rangeAnswer.min}${unit}`;
+                        if (rangeAnswer.min && (currentQuestion.answerFormat?.type !== "range" || rangeAnswer.max)) answer(value);
+                      }}
+                    >
+                      <label>
+                        {currentQuestion.answerFormat?.type === "range" ? "Minimum" : currentQuestion.eyebrow}
+                        <input
+                          type="number"
+                          value={rangeAnswer.min}
+                          min={currentQuestion.answerFormat?.min ?? undefined}
+                          max={currentQuestion.answerFormat?.max ?? undefined}
+                          step={currentQuestion.answerFormat?.step ?? undefined}
+                          placeholder={currentQuestion.answerFormat?.placeholder ?? undefined}
+                          onChange={(event) => setRangeAnswer((current) => ({ ...current, min: event.target.value }))}
+                        />
+                      </label>
+                      {currentQuestion.answerFormat?.type === "range" ? (
+                        <label>Maximum<input type="number" value={rangeAnswer.max} min={currentQuestion.answerFormat.min ?? undefined} max={currentQuestion.answerFormat.max ?? undefined} step={currentQuestion.answerFormat.step ?? undefined} onChange={(event) => setRangeAnswer((current) => ({ ...current, max: event.target.value }))} /></label>
+                      ) : null}
+                      {currentQuestion.answerFormat?.unit ? <b>{currentQuestion.answerFormat.unit}</b> : null}
+                      <button type="submit" disabled={!rangeAnswer.min || (currentQuestion.answerFormat?.type === "range" && !rangeAnswer.max)}>Continue <span>→</span></button>
+                    </form>
+                  ) : currentQuestion.answerFormat?.type === "text" ? null : (
+                    <div className="choice-grid">
+                      {currentQuestion.choices.map((choice) => (
+                        <button key={choice.id} className="choice-card" type="button" onClick={() => answer(choice)}>
+                          <strong>{choice.label}</strong>
+                          <span>{choice.consequence}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <form
                     className="custom-answer"
                     onSubmit={(event) => {
@@ -279,7 +360,7 @@ export function PurchaseWorkbench() {
                     <input
                       value={customAnswer}
                       onChange={(event) => setCustomAnswer(event.target.value)}
-                      placeholder="Or describe exactly what you want…"
+                      placeholder={currentQuestion.answerFormat?.placeholder ?? "Or describe exactly what you want…"}
                     />
                     <button type="submit" disabled={!customAnswer.trim()}>→</button>
                   </form>
@@ -290,6 +371,13 @@ export function PurchaseWorkbench() {
                   <p className="eyebrow">Decision mapped</p>
                   <h2>Ready to search with intent.</h2>
                   <p>{provider === "openai" ? "The OpenAI category agent produced this plan. Product search is the next stage." : "The deterministic fixture produced this plan. Add an OpenAI key to test live category reasoning."}</p>
+                  {taxonomySummary ? (
+                    <div className="taxonomy-note">
+                      <strong>Researched product taxonomy</strong>
+                      <p>{taxonomySummary}</p>
+                      {taxonomySources.length ? <div>{taxonomySources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.title} ↗</a>)}</div> : null}
+                    </div>
+                  ) : null}
                   <div className="research-mode-selector" aria-label="Research mode">
                     <button type="button" aria-pressed={researchMode === "fixture"} onClick={() => setResearchMode("fixture")}>
                       <strong>Fixture replay</strong><span>Fast, deterministic, no research API spend</span>

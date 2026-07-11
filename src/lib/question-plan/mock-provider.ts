@@ -9,7 +9,22 @@ export class MockQuestionPlanProvider implements QuestionPlanProvider {
     const plan = questionPlanSchema.parse({
       category: brief.category,
       summary: "Local clothing fixture used while live agent research is unavailable.",
-      questions: questionsForDepth(input.warrantedDepth),
+      taxonomySummary: "Static clothing taxonomy with use, fit, care, review evidence, seller risk, style and trade-off aspects.",
+      sources: [],
+      resolvedConstraints: [],
+      questions: questionsForDepth(input.warrantedDepth).map((question) => ({
+        ...question,
+        aspectId: question.id,
+        answerFormat: {
+          type: "single_select" as const,
+          unit: null,
+          min: null,
+          max: null,
+          step: null,
+          placeholder: null,
+        },
+        choices: question.choices.map((choice) => ({ ...choice, machineValue: choice.criterion.value })),
+      })),
       assumptions: ["Consumer purchase", "Delivery market is Poland"],
       reviewResearchPriorities: [
         "Sizing consistency and return-causing fit issues",

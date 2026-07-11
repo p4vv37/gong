@@ -30,14 +30,26 @@ export type QuestionChoice = {
   id: string;
   label: string;
   consequence: string;
+  machineValue?: string | number | boolean;
   criterion: Omit<Criterion, "id" | "source">;
+};
+
+export type QuestionAnswerFormat = {
+  type: "single_select" | "multi_select" | "number" | "range" | "boolean" | "text";
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  step: number | null;
+  placeholder: string | null;
 };
 
 export type DecisionQuestion = {
   id: string;
+  aspectId?: string;
   eyebrow: string;
   title: string;
   why: string;
+  answerFormat?: QuestionAnswerFormat;
   choices: QuestionChoice[];
 };
 
@@ -78,7 +90,7 @@ export function createPurchaseBrief(request: string, warrantedDepth: number): Pu
 export function applyQuestionAnswer(
   brief: PurchaseBrief,
   question: DecisionQuestion,
-  answer: QuestionChoice | string,
+  answer: QuestionChoice | QuestionChoice[] | string,
   totalQuestions: number,
 ): PurchaseBrief {
   const criterion: Criterion = typeof answer === "string"
@@ -87,6 +99,14 @@ export function applyQuestionAnswer(
         label: question.eyebrow,
         value: answer,
         kind: "prefer",
+        source: "answer",
+      }
+    : Array.isArray(answer)
+    ? {
+        id: `${question.id}-multi`,
+        label: question.eyebrow,
+        value: answer.map((choice) => choice.criterion.value).join(", "),
+        kind: answer.some((choice) => choice.criterion.kind === "must") ? "must" : "prefer",
         source: "answer",
       }
     : {
