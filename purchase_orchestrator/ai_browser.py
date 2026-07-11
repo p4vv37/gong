@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -9,6 +10,7 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, Playwright, sync_playwright
 from pydantic import BaseModel, Field, model_validator
 
@@ -19,10 +21,14 @@ load_dotenv()
 
 
 class BrowserAction(BaseModel):
+    current_state: Literal[
+        "OPEN_PRODUCT", "CONFIGURE_PRODUCT", "CART", "CHECKOUT", "DELIVERY", "REVIEW", "BLOCKED"
+    ]
     action: Literal["click", "fill", "select_option", "check", "upload", "stop"]
     candidate_id: str | None = None
     source_key: str | None = None
     option_value: str | None = None
+    expected_outcome: str = Field(min_length=1, max_length=500)
     reason: str = Field(min_length=1, max_length=500)
 
     @model_validator(mode="after")
@@ -34,6 +40,14 @@ class BrowserAction(BaseModel):
         if self.action == "select_option" and self.option_value is None:
             raise ValueError("option_value is required for select_option")
         return self
+
+
+class BrowserStepResult(BaseModel):
+    status: Literal["SUCCEEDED", "FAILED"]
+    action: str
+    state: str
+    evidence: str
+    page_url: str
 
 
 class BrowserRunError(RuntimeError):
@@ -93,17 +107,28 @@ class OpenAiBrowserPlanner:
         self.model = model
 
     def next_action(
-        self, *, goal: dict, page_url: str, candidates: list[dict], available_source_keys: list[str]
+        self,
+        *,
+        goal: dict,
+        page_url: str,
+        candidates: list[dict],
+        available_source_keys: list[str],
+        previous_result: dict | None,
     ) -> BrowserAction:
         prompt = {
             "goal": goal,
             "page_url": page_url,
             "candidates": candidates,
             "available_source_keys": available_source_keys,
+            "previous_result": previous_result,
             "rules": [
                 "Choose exactly one action.",
                 "Use only a candidate_id from candidates.",
                 "For fill use only a source_key from available_source_keys; never invent a value.",
+                "Use previous_result to decide whether to continue, retry, or choose a different control.",
+                "If previous_result says the requested quantity is already in the cart, never choose add-to-cart again.",
+                "After a successful add-to-cart, continue using the cart or checkout control.",
+                "Declare the current checkout state and the observable expected outcome.",
                 "Never choose payment, place-order, buy-now, or submit-order controls.",
                 "Stop when the cart or checkout is ready for user review.",
             ],
@@ -186,9 +211,23 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             "uploadAssetIds": purchase.checkout.product_configuration.upload_asset_ids,
             "preferredShippingMethod": purchase.checkout.preferred_shipping_method,
             "preferredPaymentMethod": purchase.checkout.preferred_payment_method,
-            "maximumTotal": str(purchase.offer.total_amount),
+            "maximumTotal": str(purchase.offer.maximum_total_amount),
             "currency": purchase.offer.currency,
         }
+        previous_result: BrowserStepResult | None = None
+        consecutive_failures = 0
+        successful_cart_adds = 0
+        verified_source_keys: set[str] = set()
+        required_delivery_keys = {
+            "delivery.first_name",
+            "delivery.last_name",
+            "delivery.email",
+            "delivery.phone",
+            "delivery.address_line1",
+            "delivery.postal_code",
+            "delivery.city",
+        }
+        rejected_stop_attempts = 0
         for step in range(self.config.max_steps):
             if self._is_payment_or_final_order_page(page):
                 print("[ai-browser] Reached checkout boundary; waiting for user action.")
@@ -200,15 +239,136 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             action = self.planner.next_action(
                 goal=goal, page_url=page.url, candidates=candidates,
                 available_source_keys=sorted(approved_values),
+                previous_result=None if previous_result is None else previous_result.model_dump(),
             )
-            print(f"[ai-browser] Step {step + 1}: {action.action} ({action.reason})")
+            print(
+                f"[ai-browser] Step {step + 1} [{action.current_state}]: "
+                f"{action.action} ({action.reason}); expected: {action.expected_outcome}"
+            )
             if action.action == "stop":
                 if not self._is_review_boundary(page):
                     raise BrowserRunError("Planner attempted to stop before reaching cart or checkout")
+                missing = sorted(required_delivery_keys - verified_source_keys)
+                if missing:
+                    rejected_stop_attempts += 1
+                    previous_result = BrowserStepResult(
+                        status="FAILED",
+                        action="stop",
+                        state=action.current_state,
+                        evidence=(
+                            "Checkout is not ready. Fill and verify these required Advisor fields: "
+                            + ", ".join(missing)
+                        ),
+                        page_url=page.url,
+                    )
+                    print(f"[ai-browser] Verification: FAILED — {previous_result.evidence}")
+                    if rejected_stop_attempts >= 3:
+                        raise BrowserRunError("Planner repeatedly attempted to stop before delivery data was complete")
+                    continue
                 return
+            selected_candidate = next(
+                (candidate for candidate in candidates if candidate["id"] == action.candidate_id),
+                None,
+            )
+            is_add_to_cart = bool(
+                action.action == "click"
+                and selected_candidate
+                and self._is_add_to_cart_candidate(selected_candidate)
+            )
+            if is_add_to_cart and successful_cart_adds >= purchase.offer.quantity:
+                raise BrowserRunError(
+                    "Blocked repeated add-to-cart action: requested quantity is already in the cart"
+                )
+            baseline = self._capture_baseline(page, action)
             self._perform_action(page, action, candidates, approved_values, purchase.checkout.accept_terms)
             self._wait_for_interactive_state(page, minimum_wait_ms=1_500)
+            previous_result = self._verify_action(page, action, approved_values, baseline)
+            if is_add_to_cart and previous_result.status == "SUCCEEDED":
+                previous_result = previous_result.model_copy(
+                    update={
+                        "state": "CART",
+                        "evidence": (
+                            f"Requested quantity ({purchase.offer.quantity}) is already in the cart. "
+                            "Do not add this product again; continue through cart or checkout."
+                        ),
+                    }
+                )
+            elif action.action == "fill" and previous_result.status == "SUCCEEDED" and action.source_key:
+                verified_source_keys.add(action.source_key)
+                missing = sorted(required_delivery_keys - verified_source_keys)
+                previous_result = previous_result.model_copy(
+                    update={
+                        "evidence": (
+                            f"Verified {action.source_key}. "
+                            + (
+                                "Required delivery data is complete."
+                                if not missing
+                                else "Still required: " + ", ".join(missing)
+                            )
+                        )
+                    }
+                )
+            print(f"[ai-browser] Verification: {previous_result.status} — {previous_result.evidence}")
+            if previous_result.status == "FAILED":
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    raise BrowserRunError("Three consecutive browser actions failed verification")
+            else:
+                consecutive_failures = 0
+                if is_add_to_cart:
+                    successful_cart_adds += 1
         raise BrowserRunError("Browser action limit reached before checkout was ready")
+
+    @staticmethod
+    def _capture_baseline(page: Page, action: BrowserAction) -> dict[str, str]:
+        body_text = page.locator("body").inner_text(timeout=5_000)
+        return {
+            "url": page.url,
+            "body_hash": hashlib.sha256(body_text.encode("utf-8")).hexdigest(),
+            "candidate_id": action.candidate_id or "",
+        }
+
+    @staticmethod
+    def _verify_action(
+        page: Page,
+        action: BrowserAction,
+        approved_values: dict[str, str],
+        baseline: dict[str, str],
+    ) -> BrowserStepResult:
+        locator = page.locator(f'[data-ai-adapter-candidate="{action.candidate_id}"]')
+        status: Literal["SUCCEEDED", "FAILED"] = "FAILED"
+        evidence = "Expected browser state was not observed"
+
+        if action.action == "fill" and locator.count():
+            expected = approved_values.get(action.source_key or "", "")
+            actual = locator.input_value()
+            status = "SUCCEEDED" if actual == expected else "FAILED"
+            evidence = "Field contains the approved value" if status == "SUCCEEDED" else "Field value differs from snapshot"
+        elif action.action == "select_option" and locator.count():
+            actual = locator.input_value()
+            status = "SUCCEEDED" if actual == action.option_value else "FAILED"
+            evidence = "Expected option is selected" if status == "SUCCEEDED" else "Selected option differs"
+        elif action.action == "check" and locator.count():
+            status = "SUCCEEDED" if locator.is_checked() else "FAILED"
+            evidence = "Control is checked" if status == "SUCCEEDED" else "Control is not checked"
+        elif action.action == "upload" and locator.count():
+            actual = locator.input_value()
+            status = "SUCCEEDED" if actual else "FAILED"
+            evidence = "File input contains an uploaded file" if status == "SUCCEEDED" else "File input is empty"
+        elif action.action == "click":
+            body_text = page.locator("body").inner_text(timeout=5_000)
+            body_hash = hashlib.sha256(body_text.encode("utf-8")).hexdigest()
+            changed = page.url != baseline["url"] or body_hash != baseline["body_hash"]
+            status = "SUCCEEDED" if changed else "FAILED"
+            evidence = "URL or visible page content changed" if changed else "Click produced no observable change"
+
+        return BrowserStepResult(
+            status=status,
+            action=action.action,
+            state=action.current_state,
+            evidence=evidence,
+            page_url=page.url,
+        )
 
     def _wait_for_interactive_state(self, page: Page, *, minimum_wait_ms: int) -> None:
         """Wait for delayed widgets/variants and require the element set to stabilize."""
@@ -221,20 +381,26 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         while elapsed_ms < self.config.page_settle_timeout_ms:
             page.wait_for_timeout(poll_ms)
             elapsed_ms += poll_ms
-            signature = tuple(
-                page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']")
-                .evaluate_all(
-                    """elements => elements
-                        .filter(element => element.offsetParent !== null && !element.disabled)
-                        .map(element => [
-                            element.tagName,
-                            element.type || '',
-                            element.name || '',
-                            element.getAttribute('aria-label') || '',
-                            element.placeholder || ''
-                        ].join('|'))"""
+            try:
+                signature = tuple(
+                    page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']")
+                    .evaluate_all(
+                        """elements => elements
+                            .filter(element => element.offsetParent !== null && !element.disabled)
+                            .map(element => [
+                                element.tagName,
+                                element.type || '',
+                                element.name || '',
+                                element.getAttribute('aria-label') || '',
+                                element.placeholder || ''
+                            ].join('|'))"""
+                    )
                 )
-            )
+            except PlaywrightError:
+                # Navigation can replace the JS execution context between polling attempts.
+                stable_polls = 0
+                previous_signature = None
+                continue
             if signature == previous_signature and signature:
                 stable_polls += 1
             else:
@@ -246,8 +412,13 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
     @staticmethod
     def _approved_values(purchase: PurchaseDetails) -> dict[str, str]:
         address = purchase.checkout.delivery_address
+        name_parts = address.recipient_name.strip().split(maxsplit=1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) == 2 else name_parts[0]
         values = {
             "delivery.recipient_name": address.recipient_name,
+            "delivery.first_name": first_name,
+            "delivery.last_name": last_name,
             "delivery.email": address.email,
             "delivery.phone": address.phone,
             "delivery.address_line1": address.address_line1,
@@ -364,6 +535,15 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             "place order", "pay now", "complete order", "submit order",
         )
         return any(term in text for term in blocked)
+
+    @staticmethod
+    def _is_add_to_cart_candidate(candidate: dict) -> bool:
+        text = " ".join(
+            str(candidate.get(field, "")) for field in ("text", "name", "labels")
+        ).lower()
+        return candidate.get("name") == "add" or any(
+            phrase in text for phrase in ("dodaj do koszyka", "add to cart", "add to bag")
+        )
 
     @staticmethod
     def _is_payment_or_final_order_page(page: Page) -> bool:

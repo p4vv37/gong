@@ -184,6 +184,8 @@ Shopping Advisor tworzy tylko propozycje zakupu:
 
 Shopping Advisor przekazuje kompletne instrukcje checkoutu i niezmienny snapshot oferty. Identyfikatory plikow sa rozwiazywane na sciezki dopiero przez zaufany worker; LLM nie otrzymuje dowolnego dostepu do systemu plikow. Wartosci formularzy pochodza wylacznie z nazwanych pol snapshotu, a nie z tekstu wygenerowanego przez model.
 
+Browser adapter realizuje kazdy krok jako petle obserwacji, planowania, wykonania i weryfikacji. LLM interpretuje semantyke strony oraz wybiera ograniczona akcje, ale wynik potwierdza kod Playwrighta. Niepowodzenie weryfikacji wraca do modelu jako kontekst kolejnej decyzji; powtarzajace sie niepowodzenia zatrzymuja proces.
+
 Purchase Orchestrator zwraca status procesu:
 
 ```json

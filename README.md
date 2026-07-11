@@ -43,4 +43,6 @@ AI_BROWSER_MODEL=gpt-5.4-mini
 
 Pliki sa mapowane przez worker, np. `BROWSER_ASSET_MAP={"asset_mock_portrait_001":"C:\\bezpieczny-katalog\\mock.png"}`. Shopping Advisor przesyla tylko identyfikator `asset_mock_portrait_001`; model nie wybiera sciezki pliku.
 
+Adapter pracuje w petli `OBSERVE -> PLAN -> EXECUTE -> VERIFY`. Planner deklaruje aktualny stan checkoutu i oczekiwany rezultat. Po akcji Playwright sprawdza wartosc pola, wybrana opcje, zaznaczenie, upload albo zmiane URL/tresci i przekazuje wynik `SUCCEEDED`/`FAILED` do kolejnej decyzji modelu. Trzy kolejne niezweryfikowane akcje zatrzymuja wykonanie.
+
 Nastepnie uruchom standardowy przeplyw zatwierdzenia. Wynik adaptera bedzie mial status `USER_ACTION_REQUIRED`, a screenshot koncowego stanu zostanie zapisany w `artifacts/browser/`.
