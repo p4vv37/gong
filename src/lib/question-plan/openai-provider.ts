@@ -21,7 +21,7 @@ Rules:
 - Product review priorities should cover category-specific real-world failures, long-term use, fit or compatibility, and manipulation/selection bias where relevant.
 - Seller risk includes fulfilment, authenticity, returns, buyer protection, marketplace seller identity, payment protection, recency, review volume, and suspicious review patterns.
 - Questions should resolve trade-offs, not merely collect specifications.
-- Each question has a stable aspectId and a precise answerFormat. Use single_select for one variant dimension (e.g. Pro vs Pro Max), multi_select only when multiple values are genuinely acceptable, number/range with units for quantities, boolean for yes/no, and text only when structured formats cannot express the decision.
+- Each question has a stable aspectId and a precise answerFormat. Use single_select for one mutually exclusive variant dimension, multi_select only when multiple values are genuinely acceptable, number/range with units for quantities, boolean for yes/no, and text only when structured formats cannot express the decision.
 - For single_select, multi_select and boolean, provide choices with stable machineValue values. For other formats, choices must be an empty array.
 - Numeric formats must set sensible min/max/step and unit based on the researched category. Non-numeric formats set these fields to null.
 - Use dependencies in question wording and choices rather than offering impossible configurations. Only include options shown to exist in current sources.
