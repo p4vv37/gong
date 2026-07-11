@@ -108,6 +108,7 @@ class BrowserConfig:
     screenshot_dir: str = "artifacts/browser"
     browser_channel: str | None = "chrome"
     page_settle_timeout_ms: int = 6_000
+    action_settle_minimum_ms: int = 500
 
     @classmethod
     def from_environment(cls) -> "BrowserConfig":
@@ -118,6 +119,7 @@ class BrowserConfig:
             screenshot_dir=os.getenv("BROWSER_SCREENSHOT_DIR", "artifacts/browser"),
             browser_channel=os.getenv("BROWSER_CHANNEL", "chrome") or None,
             page_settle_timeout_ms=int(os.getenv("BROWSER_PAGE_SETTLE_TIMEOUT_MS", "6000")),
+            action_settle_minimum_ms=int(os.getenv("BROWSER_ACTION_SETTLE_MS", "500")),
         )
 
 
@@ -153,6 +155,9 @@ class OpenAiBrowserPlanner:
                 "Use previous_result to decide whether to continue, retry, or choose a different control.",
                 "If previous_result says the requested quantity is already in the cart, never choose add-to-cart again.",
                 "After a successful add-to-cart, continue using the cart or checkout control.",
+                "When candidates belong to a blocking modal, resolve that modal before continuing the page.",
+                "Never skip a missing address component when an approved delivery source key can provide it.",
+                "Dismiss optional marketing/newsletter dialogs; never subscribe or grant marketing consent.",
                 "Declare the current checkout state and the observable expected outcome.",
                 "Never choose payment, place-order, buy-now, or submit-order controls.",
                 "Stop when the cart or checkout is ready for user review.",
@@ -352,7 +357,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                 )
             baseline = self._capture_baseline(page, action)
             self._perform_action(page, action, candidates, approved_values, purchase.checkout.accept_terms)
-            self._wait_for_interactive_state(page, minimum_wait_ms=1_500)
+            self._wait_for_interactive_state(
+                page,
+                minimum_wait_ms=self.config.action_settle_minimum_ms,
+            )
             previous_result = self._verify_action(page, action, approved_values, baseline)
             if is_add_to_cart and previous_result.status == "SUCCEEDED":
                 previous_result = previous_result.model_copy(
@@ -641,7 +649,7 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
     def _wait_for_interactive_state(self, page: Page, *, minimum_wait_ms: int) -> None:
         """Wait for delayed widgets/variants and require the element set to stabilize."""
         poll_ms = 500
-        stable_polls_required = 3
+        stable_polls_required = 2
         elapsed_ms = 0
         stable_polls = 0
         previous_signature: tuple[str, ...] | None = None
@@ -719,8 +727,20 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         return page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']").evaluate_all(
             """elements => {
                 elements.forEach(element => element.removeAttribute('data-ai-adapter-candidate'));
+                const visible = element => element.offsetParent !== null && !element.disabled;
+                const overlays = Array.from(document.querySelectorAll(
+                    '[role="dialog"], dialog, [aria-modal="true"], .modal'
+                )).filter(element => element.offsetParent !== null);
+                const activeOverlay = overlays
+                    .map((element, index) => ({
+                        element,
+                        index,
+                        zIndex: Number.parseInt(getComputedStyle(element).zIndex, 10) || 0,
+                    }))
+                    .sort((left, right) => left.zIndex - right.zIndex || left.index - right.index)
+                    .at(-1)?.element;
                 return elements
-                .filter(element => element.offsetParent !== null && !element.disabled)
+                .filter(element => visible(element) && (!activeOverlay || activeOverlay.contains(element)))
                 .slice(0, 100)
                 .map((element, index) => {
                     const id = `candidate-${index}`;
