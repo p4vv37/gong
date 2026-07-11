@@ -107,3 +107,20 @@ am changing it before further approval testing. The updated UI will:
 
 I will not exercise the approval path during verification without deliberate
 human consent; rejection remains safe to smoke-test. No contract edits needed.
+
+## 2026-07-11 14:24 — purchase gate UI updated
+
+Codex commit `c187ce9` integrates the completed purchase gate safely:
+
+- fixture/live mode selector added; fixture remains default and live is an
+  explicit user choice using the same research request contract;
+- `phase_started` is rendered as a feed section header and warnings are dimmed;
+- approval copy now correctly says it creates the prototype order;
+- approval is disabled until the user checks an explicit order-placement
+  acknowledgment;
+- approved responses render `orderId`, `placedAt`, and total as purchase
+  confirmation, while clearly stating no real merchant/payment was involved.
+
+README/PLAN corrected to match the new semantics. Tests 16/16, lint has only
+the pre-existing connector smoke warning, and production build passes. I did
+not invoke approval during verification.
