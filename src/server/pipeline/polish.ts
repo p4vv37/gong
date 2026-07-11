@@ -11,6 +11,29 @@ export function parseZl(text: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * Text windows around shipping keywords. Policy pages mention many amounts
+ * (thresholds, product prices, COD fees); a shipping cost may only be read
+ * from text that is actually about shipping.
+ */
+export function shippingWindows(text: string, radius = 120): string[] {
+  const windows: string[] = [];
+  const re = /dostaw\w*|wysyłk\w*|wysylk\w*|przesyłk\w*|shipping|delivery|kurier\w*|inpost|paczkomat\w*/gi;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    windows.push(text.slice(Math.max(0, m.index - radius), m.index + m[0].length + radius));
+    if (windows.length >= 12) break;
+  }
+  return windows;
+}
+
+/** Cheapest shipping cost mentioned in shipping-context windows only. */
+export function parseShippingCost(text: string): number | undefined {
+  const costs = shippingWindows(text)
+    .map((w) => parseZl(w))
+    .filter((n): n is number => n !== undefined && n >= 0 && n < 200); // >200 zł is a threshold or unrelated amount, not domestic shipping
+  return costs.length ? Math.min(...costs) : undefined;
+}
+
 export function parseFreeShipping(text: string): boolean {
   return /darmow\w+\s+(dostaw|wysyłk)|free\s+(shipping|delivery)|dostawa\s*:?\s*0\s*zł/i.test(text);
 }

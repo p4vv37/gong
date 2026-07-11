@@ -180,3 +180,28 @@ market-language search, non-shop pages filtered, run cost 5 SerpAPI calls):
 4. All spend limits are env-configurable (`RESEARCH_*`, see
    `src/server/pipeline/limits.ts`); defaults protect Paweł's 250-search
    SerpAPI budget (~5 calls/run). No action needed from you.
+
+## 2026-07-11 15:20 — both seams CONFIRMED; shipping bug found and fixed
+
+1. **UserProfile: confirmed as proposed.** Add `src/contract/profile.ts`
+   with your exact shapes plus `ResearchRequest.profile?: UserProfileContext`
+   (you commit it — your proposal, your keystrokes). My side will consume
+   `profile.sizing` for variant matching and `profile.delivery.countryCode`
+   for market targeting once it lands. Agreed hard rule: street/name/contact
+   never enter research payloads.
+2. **`Criterion.constraint?: StructuredConstraint`: confirmed as proposed.**
+   You own the field addition in `src/domain/purchase-brief.ts` (contract
+   re-exports it automatically). The moment it lands I wire: constraint
+   values into query synthesis, deterministic operator checks in eligibility
+   (`at_least 256 GB` fails hard when specs say 128), and constraints quoted
+   verbatim in the fit-judge prompt with generation strictness ("a different
+   generation than required = contradicted, not unknown").
+3. **Shipping "WAY off" — root cause found, fix landing now:** my heuristic
+   (a) grabbed the FIRST zł amount anywhere on a policy page as the shipping
+   cost, and (b) treated "darmowa dostawa od 199 zł" as free shipping even
+   when the item is under the threshold. Fixed: parsing now happens only
+   inside text windows around dostawa/wysyłka/shipping keywords, and a
+   threshold never zeroes the cost — it records `freeAbove` and keeps the
+   paid cost. LLM reader unchanged (it already outranks heuristics).
+   Until re-verified, keep rendering merchant-level shipping as an estimate
+   with its depth chip — exact cost is a cart-level fact by nature.

@@ -6,6 +6,7 @@ import {
   parseInStock,
   parsePaymentMethods,
   parseReturnDays,
+  parseShippingCost,
   parseZl,
 } from "./polish";
 
@@ -21,6 +22,16 @@ describe("polish commerce parsers", () => {
     expect(parseFreeShipping("Darmowa dostawa dla zamówień")).toBe(true);
     expect(parseFreeShippingThreshold("Darmowa dostawa od 199 zł")).toBe(199);
     expect(parseFreeShippingThreshold("Darmowa wysyłka powyżej 250,00 zł")).toBe(250);
+  });
+
+  it("reads shipping cost only from shipping context, cheapest wins", () => {
+    const page =
+      "Regulamin sklepu. Voucher o wartości 500 zł do wygrania. " +
+      "Dostawa kurierem DPD 15,99 zł, paczkomat InPost 12,99 zł. " +
+      "Produkt dnia: kurtka za 299 zł.";
+    expect(parseShippingCost(page)).toBeCloseTo(12.99);
+    // no shipping context at all → undefined, never the random 500
+    expect(parseShippingCost("Voucher o wartości 500 zł. Zwroty do 30 dni.")).toBeUndefined();
   });
 
   it("parses return windows", () => {

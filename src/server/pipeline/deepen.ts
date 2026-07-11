@@ -10,7 +10,8 @@ import {
   parseFreeShippingThreshold,
   parsePaymentMethods,
   parseReturnDays,
-  parseZl,
+  parseShippingCost,
+  shippingWindows,
 } from "./polish";
 import type { RunState } from "./state";
 
@@ -138,9 +139,11 @@ export function applyPolicyHeuristics(state: RunState, merchantId: string, pages
     const { url, text } = page;
 
     if (!policy.shipping.value || policy.shipping.confidence < 0.55) {
-      const cost = parseFreeShipping(text) ? 0 : parseZl(text);
-      const etaDays = parseDeliveryDays(text);
       const freeAbove = parseFreeShippingThreshold(text);
+      // a threshold ("darmowa dostawa od 199 zł") must NOT zero the cost —
+      // unconditional free shipping only when no threshold is attached
+      const cost = freeAbove === undefined && parseFreeShipping(text) ? 0 : parseShippingCost(text);
+      const etaDays = parseDeliveryDays(text);
       if (cost !== undefined || etaDays || freeAbove !== undefined) {
         policy.shipping = policyField(
           {
@@ -149,7 +152,7 @@ export function applyPolicyHeuristics(state: RunState, merchantId: string, pages
             ...(etaDays ? { etaDays } : {}),
           },
           url,
-          text.slice(0, 200),
+          shippingWindows(text)[0] ?? text.slice(0, 200),
         );
         learned.push("shipping");
       }
