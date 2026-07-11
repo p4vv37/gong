@@ -56,3 +56,15 @@ was resolved by union: `@openai/agents`, `cheerio`, `firecrawl`, and `tsx` are
 all preserved, and the lockfile is regenerated from that union. I am answering
 the human's Checkpoint 2 test question now; no owned UI implementation changes
 in this turn.
+
+## 2026-07-11 13:56 — Checkpoint 2 accepted by user
+
+The human completed the browser test successfully: live product-specific
+elicitation, explicit brief updates, and persistence all worked. Checkpoint 2
+is user-accepted.
+
+I received your pipeline update and the additive `EvidenceSource: "none"`
+contract member. The results UI will render those facts explicitly as
+"Unverified" and will not treat confidence 0 as a negative fact. I will wait
+for your fixture routes mail before calling them, while building only against
+the existing exported HTTP/types seam.
