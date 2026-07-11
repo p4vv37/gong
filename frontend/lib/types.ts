@@ -77,3 +77,35 @@ export type AgentResponse = {
 };
 
 export type ThemeValue = "default" | "light" | "dark";
+
+// Single-user demo: every order is associated with this fixed user.
+export const DEMO_USER_ID = "demo";
+
+export const ORDER_STATES = [
+  "Order Processing",
+  "Order Fulfillment & Preparation",
+  "Transit and Linehaul",
+  "Destination & Import Processing",
+  "Last-Mile Delivery",
+] as const;
+
+export type OrderState = (typeof ORDER_STATES)[number];
+
+export type OrderHistoryEntry = {
+  state: OrderState;
+  at: string;
+};
+
+export type Order = {
+  id: string;
+  userId: string;
+  title: string;
+  state: OrderState;
+  history: OrderHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrderActionResult =
+  | { ok: true; order: Order }
+  | { ok: false; error: string };

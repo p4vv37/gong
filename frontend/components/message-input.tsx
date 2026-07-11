@@ -73,10 +73,6 @@ export function ChatBody({
   return (
     <section className="ios-chat-canvas" aria-label="Conversation">
       <div className="ios-chat-date">Today</div>
-      <div className="ios-encryption-notice">
-        <span aria-hidden="true">🔒</span>
-        Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them. <button type="button">Learn more</button>
-      </div>
       {messages.map((message, index) => {
         const isUser = message.type === "user";
         const grouped = messages[index - 1]?.type === message.type;

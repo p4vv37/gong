@@ -25,6 +25,11 @@
   --animate-hide-camera: hide-camera 0.5s forwards ease-out;
   --animate-slide-in-down: slideInDown 0.5s ease-out;
   --animate-fade-out: fadeOut 0.5s ease-out;
+  --animate-gear-spin: gear-spin 4s linear infinite;
+  --animate-pack-bounce: pack-bounce 1.6s ease-in-out infinite;
+  --animate-truck-drive: truck-drive 1.2s ease-in-out infinite;
+  --animate-stamp-press: stamp-press 1.6s ease-in-out infinite;
+  --animate-house-pop: house-pop 1.8s ease-in-out infinite;
 
   @keyframes wiggle {
     0%,
@@ -81,6 +86,62 @@
       opacity: 0;
     }
   }
+
+  @keyframes gear-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes pack-bounce {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-2px) scale(1.06);
+    }
+  }
+
+  @keyframes truck-drive {
+    0%,
+    100% {
+      transform: translate(-1.5px, 0);
+    }
+    25% {
+      transform: translate(0, -1px);
+    }
+    50% {
+      transform: translate(1.5px, 0);
+    }
+    75% {
+      transform: translate(0, -1px);
+    }
+  }
+
+  @keyframes stamp-press {
+    0%,
+    50%,
+    100% {
+      transform: translateY(0);
+    }
+    30% {
+      transform: translateY(-2.5px) rotate(-4deg);
+    }
+    40% {
+      transform: translateY(1.5px) scale(0.96);
+    }
+  }
+
+  @keyframes house-pop {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
+    }
+  }
 }
 
 :root {
@@ -89,6 +150,8 @@
 }
 
 body {
+  height: 100dvh;
+  overflow: hidden;
   background: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -341,7 +404,10 @@ div.recent-calls {
   --ios-secondary: #78787d;
   --ios-separator: #d9d9dd;
   --ios-green: #1ecb70;
-  min-height: 100dvh;
+  display: flex;
+  height: 100dvh;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--ios-bg);
   color: var(--ios-text);
 }
@@ -358,10 +424,14 @@ div.recent-calls {
 
 .ios-app-surface {
   position: relative;
+  display: flex;
   width: min(100%, 680px);
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   margin-inline: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   background: var(--ios-surface);
 }
 
@@ -450,6 +520,9 @@ div.recent-calls {
 }
 
 .ios-content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
   padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
 
@@ -708,7 +781,9 @@ div.recent-calls {
   position: relative;
   display: flex;
   width: min(100%, 680px);
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
   margin-inline: auto;
   flex-direction: column;
   overflow: hidden;
@@ -745,7 +820,11 @@ div.recent-calls {
   height: 44px;
   flex: none;
   place-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--chat-text);
+  cursor: pointer;
 }
 
 .ios-chat-back svg {
@@ -820,7 +899,7 @@ div.recent-calls {
   flex-direction: column;
   align-items: center;
   overflow-y: auto;
-  padding: 76px 32px calc(96px + env(safe-area-inset-bottom));
+  padding: 16px 32px 20px;
   background-color: #080909;
   background-image: linear-gradient(rgb(8 9 9 / 86%), rgb(8 9 9 / 86%)), url("/imgs/bg-pattern.png");
   background-repeat: repeat;
@@ -838,33 +917,6 @@ div.recent-calls {
   font-weight: 650;
   line-height: 1;
   box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
-}
-
-.ios-encryption-notice {
-  z-index: 1;
-  max-width: 630px;
-  padding: 13px 18px;
-  border-radius: 10px;
-  background: #20211f;
-  color: #f6c868;
-  font-size: clamp(.95rem, 3.9vw, 1.18rem);
-  line-height: 1.42;
-  text-align: center;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 28%);
-}
-
-.ios-encryption-notice span {
-  margin-right: 4px;
-  font-size: .9em;
-}
-
-.ios-encryption-notice button {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  font-weight: 700;
-  cursor: pointer;
 }
 
 .ios-message-row {

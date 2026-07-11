@@ -12,9 +12,10 @@ import type { AgentRequestMessage, AgentResponse, ConversationMessage } from "@/
 type ChatViewProps = {
   chat: SelectedChat;
   showBackLink?: boolean;
+  onBack?: () => void;
 };
 
-export function ChatView({ chat, showBackLink = false }: ChatViewProps) {
+export function ChatView({ chat, showBackLink = false, onBack }: ChatViewProps) {
   const imageSrc = friendImagePath(chat.imgName, chat.imgFormat, chat.imgSrc);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [agentIsTyping, setAgentIsTyping] = useState(false);
@@ -70,7 +71,11 @@ export function ChatView({ chat, showBackLink = false }: ChatViewProps) {
     <main className="ios-chat-view">
       <header className="ios-chat-header">
         <div className="ios-chat-contact">
-          {showBackLink ? (
+          {onBack ? (
+            <button type="button" className="ios-chat-back" onClick={onBack} aria-label="Back to chats">
+              <BackIcon />
+            </button>
+          ) : showBackLink ? (
             <Link className="ios-chat-back" href="/" aria-label="Back to chats">
               <BackIcon />
             </Link>

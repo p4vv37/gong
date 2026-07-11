@@ -1,30 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import type { ChatPreview } from "@/lib/types";
 import { chats, friendImagePath } from "@/lib/data";
 import { CameraSmallIcon, CheckmarksIcon, MicSmallIcon } from "@/components/ios-icons";
 
-export function ChatsList({ query = "" }: { query?: string }) {
-  const router = useRouter();
+export function ChatsList({
+  query = "",
+  onSelectChat,
+}: {
+  query?: string;
+  onSelectChat: (chat: ChatPreview) => void;
+}) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleChats = normalizedQuery
     ? chats.filter((chat) =>
         `${chat.friendName} ${chat.lastMessage}`.toLocaleLowerCase().includes(normalizedQuery),
       )
     : chats;
-
-  const openChat = (chat: ChatPreview) => {
-    const params = new URLSearchParams({
-      friendName: chat.friendName,
-      friendStatus: chat.friendStatus,
-      imgName: chat.imgName,
-      imgFormat: chat.imgFormat,
-      ...(chat.imgSrc ? { imgSrc: chat.imgSrc } : {}),
-    });
-    router.push(`/chat?${params.toString()}`);
-  };
 
   if (visibleChats.length === 0) {
     return <p className="ios-no-results">No chats found</p>;
@@ -33,7 +26,7 @@ export function ChatsList({ query = "" }: { query?: string }) {
   return (
     <section id="chats" aria-label="Chats">
       {visibleChats.map((chat) => (
-        <button key={chat.id} type="button" className="ios-chat-row" onClick={() => openChat(chat)}>
+        <button key={chat.id} type="button" className="ios-chat-row" onClick={() => onSelectChat(chat)}>
           <Image
             className="ios-chat-avatar"
             src={friendImagePath(chat.imgName, chat.imgFormat, chat.imgSrc)}

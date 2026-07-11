@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ActiveTab, CallItem } from "@/lib/types";
+import type { ActiveTab, CallItem, SelectedChat } from "@/lib/types";
 import { callItems } from "@/lib/data";
 import { ChatsList } from "@/components/chats-list";
 import { StatusList } from "@/components/status-list";
 import { CallsList } from "@/components/calls-list";
 import { SettingsDropdown } from "@/components/settings-dropdown";
 import { SettingsContent } from "@/components/settings-content";
+import { ChatView } from "@/components/chat-view";
 import {
   CameraIcon,
   CallsIcon,
@@ -43,6 +44,7 @@ export function WhatsAppApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [showSettingsPage, setShowSettingsPage] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<SelectedChat | null>(null);
   const [calls, setCalls] = useState<CallItem[]>(callItems);
   const title = useMemo(() => titles[activeTab], [activeTab]);
 
@@ -58,13 +60,16 @@ export function WhatsAppApp() {
     setActiveTab(tab);
     setQuery("");
     setShowSettingsPage(false);
+    setSelectedChat(null);
     if (settingsOpen) closeSettings();
   };
 
   return (
     <main className="ios-app-shell">
       <div className="ios-app-surface">
-        {showSettingsPage ? (
+        {selectedChat ? (
+          <ChatView chat={selectedChat} onBack={() => setSelectedChat(null)} />
+        ) : showSettingsPage ? (
           <SettingsContent onBack={() => setShowSettingsPage(false)} />
         ) : (
           <>
@@ -118,7 +123,21 @@ export function WhatsAppApp() {
             </header>
 
             <div className="ios-content">
-              {activeTab === "chats" ? <ChatsList query={query} /> : null}
+              {activeTab === "chats" ? (
+                <ChatsList
+                  query={query}
+                  onSelectChat={(chat) => {
+                    setSelectedChat({
+                      friendName: chat.friendName,
+                      friendStatus: chat.friendStatus,
+                      imgName: chat.imgName,
+                      imgFormat: chat.imgFormat,
+                      imgSrc: chat.imgSrc,
+                    });
+                    if (settingsOpen) closeSettings();
+                  }}
+                />
+              ) : null}
               {activeTab === "updates" ? <StatusList /> : null}
               {activeTab === "calls" ? <CallsList calls={calls} /> : null}
               {activeTab === "communities" ? (

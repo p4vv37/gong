@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { ThemeValue } from "@/lib/types";
-import { getStoredTheme, setStoredTheme } from "@/lib/theme";
+import { getStoredTheme, initTheme, setStoredTheme } from "@/lib/theme";
 
 type ThemeContextValue = {
   theme: ThemeValue;
@@ -27,6 +27,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeValue>(readInitialTheme);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [modalSelection, setModalSelection] = useState<ThemeValue>(theme);
+
+  useEffect(() => {
+    initTheme();
+  }, []);
 
   const setTheme = (value: ThemeValue) => {
     setStoredTheme(value);
