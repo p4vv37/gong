@@ -657,10 +657,19 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         return page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']").evaluate_all(
             """elements => {
                 elements.forEach(element => element.removeAttribute('data-ai-adapter-candidate'));
-                const visible = element => element.offsetParent !== null && !element.disabled;
+                const visible = element => {
+                    const style = getComputedStyle(element);
+                    const rect = element.getBoundingClientRect();
+                    return !element.disabled
+                        && style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && Number.parseFloat(style.opacity || '1') > 0
+                        && rect.width > 0
+                        && rect.height > 0;
+                };
                 const overlays = Array.from(document.querySelectorAll(
                     '[role="dialog"], dialog, [aria-modal="true"], .modal'
-                )).filter(element => element.offsetParent !== null);
+                )).filter(visible);
                 const activeOverlay = overlays
                     .map((element, index) => ({
                         element,
