@@ -9,9 +9,10 @@ An evidence-driven purchasing agent that turns a natural-language request into a
 - Explicit purchase brief with hard requirements and weighted preferences.
 - Fixture and live research through a stable HTTP/SSE contract.
 - Live discovery, standardization, ranking, and merchant deep-dive progress.
-- Best overall, best value, and lowest-risk recommendation cards.
+- Three image-led recommendation cards with drill-in standardized product artifacts.
 - Separate product-review and store/seller-review evidence.
-- Confidence, evidence depth, compromises, and unknowns.
+- Per-field provenance, evidence links, confidence/depth, and distinct Not checked vs Checked unresolved states.
+- Same-product offer comparison and a returnable research-event log.
 - Checkout proposal with explicit approve/reject consent; approval creates a persisted mock order confirmation with no real merchant contact or payment transfer.
 
 ## Run it

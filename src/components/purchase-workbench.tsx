@@ -213,7 +213,7 @@ export function PurchaseWorkbench() {
         {view === "research" ? (
           <ResearchProgress events={progressEvents} error={researchError} mode={researchMode} onCancel={cancelResearch} />
         ) : view === "results" && researchResult ? (
-          <RecommendationResults result={researchResult} onNewRequest={reset} />
+          <RecommendationResults result={researchResult} events={progressEvents} onNewRequest={reset} />
         ) : !brief ? (
           <form className="request-card" onSubmit={startResearch}>
             <label htmlFor="request">What are you looking for?</label>

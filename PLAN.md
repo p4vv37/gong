@@ -42,19 +42,21 @@ Status: implemented; awaiting user acceptance.
 
 User test:
 
-1. Inspect Best overall, Best value, and Lowest risk cards.
-2. Verify product reviews and store/seller reviews are separate.
-3. Confirm confidence-zero policy facts say Unverified.
-4. Prepare a checkout proposal and inspect totals and unknowns.
-5. Confirm approval is disabled until the order-placement acknowledgment is checked.
-6. Test rejection, then deliberately approve a fixture proposal and inspect the mock order ID and placement timestamp.
+1. Inspect the three image-led Best overall, Best value, and Lowest risk cards.
+2. Open each product artifact and inspect standardized offer/spec/policy fields with source, evidence depth, confidence, and evidence links.
+3. Confirm missing facts distinguish **Not checked yet** from **Checked, unresolved**.
+4. Inspect same-product offers, separate product/store reviews, compromises, and Deferred chips.
+5. Open the Research log, inspect the full event history, and return to results.
+6. Prepare a checkout proposal and inspect totals and unknowns.
+7. Confirm approval is disabled until the order-placement acknowledgment is checked.
+8. Test rejection, then deliberately approve a fixture proposal and inspect the mock order ID and placement timestamp.
 
-Acceptance: offer claims, trade-offs, review evidence, policy depth, confidence, and unknowns remain distinct. Approval resumes the purchase gate and creates a persisted mock order record; the UI renders its ID/time while stating that no real merchant or payment was involved.
+Acceptance: the shortlist stays compact, while product artifacts expose the complete standardized record and provenance on demand. Research history is recoverable from results. Approval resumes the purchase gate and creates a persisted mock order record; the UI renders its ID/time while stating that no real merchant or payment was involved.
 
-## Checkpoint 5 — resilience and end-to-end quality
+## Checkpoint 5 — user profile, resilience, and end-to-end quality
 
 Status: pending.
 
 User test: complete conversation → fixture research → recommendations → consent on desktop and mobile, including interrupted streams and failed providers.
 
-Acceptance: accessible interactive states, resumable completed results, useful failures, responsive layout, and automated browser coverage.
+Acceptance: category-relevant profile facets (sizes, delivery region, payment-method preferences, default depth) are injected without hardcoded taxonomy questions or unnecessary PII; interactive states are accessible; completed results are resumable; failures are useful; layout is responsive; browser coverage is automated.
