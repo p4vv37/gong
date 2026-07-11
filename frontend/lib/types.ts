@@ -78,7 +78,7 @@ export type AgentResponse = {
 
 export type ThemeValue = "default" | "light" | "dark";
 
-// Single-user demo: every order is associated with this fixed user.
+// Every order is associated with this fixed user until auth is added.
 export const DEMO_USER_ID = "demo";
 
 export const ORDER_STATES = [

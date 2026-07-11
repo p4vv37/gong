@@ -1,9 +1,5 @@
-"use client";
-
-import { useState, useTransition } from "react";
-import { updateOrderState } from "@/app/orders/actions";
 import { OrderStateIcon } from "@/components/order-state-icons";
-import { ORDER_STATES, type Order, type OrderState } from "@/lib/types";
+import { ORDER_STATES, type Order } from "@/lib/types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -20,18 +16,7 @@ function formatTimestamp(timestamp: string) {
 }
 
 export function OrderCard({ order }: { order: Order }) {
-  const [error, setError] = useState("");
-  const [isUpdating, startUpdating] = useTransition();
   const currentIndex = ORDER_STATES.indexOf(order.state);
-  const isFinalState = currentIndex === ORDER_STATES.length - 1;
-
-  function changeState(state: OrderState) {
-    setError("");
-    startUpdating(async () => {
-      const result = await updateOrderState(order.id, state);
-      if (!result.ok) setError(result.error);
-    });
-  }
 
   return (
     <article className="rounded-2xl bg-white p-5 shadow-sm dark:bg-WADarkGreen">
@@ -69,7 +54,7 @@ export function OrderCard({ order }: { order: Order }) {
                   }`}
                 >
                   {complete || current ? (
-                    <OrderStateIcon state={state} animated={current} className="h-4.5 w-4.5" />
+                    <OrderStateIcon state={state} animated={current} className="h-3 w-3" />
                   ) : (
                     index + 1
                   )}
@@ -83,34 +68,10 @@ export function OrderCard({ order }: { order: Order }) {
         </ol>
       </div>
 
-      <dl className="mt-4 grid gap-2 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-3">
-        <div><dt className="font-medium text-slate-900 dark:text-white">Order ID</dt><dd className="mt-0.5 break-all font-mono text-xs">{order.id}</dd></div>
+      <dl className="mt-4 grid gap-2 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2">
         <div><dt className="font-medium text-slate-900 dark:text-white">Created</dt><dd className="mt-0.5">{formatTimestamp(order.createdAt)}</dd></div>
         <div><dt className="font-medium text-slate-900 dark:text-white">Last updated</dt><dd className="mt-0.5">{formatTimestamp(order.updatedAt)}</dd></div>
       </dl>
-
-      <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:items-center">
-        <button
-          type="button"
-          disabled={isUpdating || isFinalState}
-          onClick={() => changeState(ORDER_STATES[currentIndex + 1])}
-          className="rounded-lg bg-WATeal px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isUpdating ? "Saving…" : isFinalState ? "Delivered" : "Advance"}
-        </button>
-        <label className="flex min-w-0 items-center gap-2 text-sm font-medium">
-          Set stage
-          <select
-            value={order.state}
-            disabled={isUpdating}
-            onChange={(event) => changeState(event.target.value as OrderState)}
-            className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-WADarkTeal dark:text-white"
-          >
-            {ORDER_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
-          </select>
-        </label>
-      </div>
-      {error ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
     </article>
   );
 }

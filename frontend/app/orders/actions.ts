@@ -27,8 +27,7 @@ function isOrderState(value: unknown): value is OrderState {
   return typeof value === "string" && ORDER_STATES.includes(value as OrderState);
 }
 
-function actionError(error: unknown): OrderActionResult {
-  console.error("Order action failed", error);
+function actionError(_error: unknown): OrderActionResult {
   return { ok: false, error: "Unable to save this order. Please try again." };
 }
 
@@ -135,8 +134,7 @@ export async function getOrder(orderId: string): Promise<Order | null> {
   try {
     const snapshot = await getDoc(doc(db, "orders", orderId));
     return snapshot.exists() ? orderFromData(snapshot.id, snapshot.data()) : null;
-  } catch (error) {
-    console.error("Unable to load order", error);
+  } catch {
     return null;
   }
 }
@@ -155,56 +153,7 @@ export async function listOrders(userId: string): Promise<Order[]> {
     return snapshot.docs
       .map((order) => orderFromData(order.id, order.data()))
       .sort((first, second) => second.createdAt.localeCompare(first.createdAt));
-  } catch (error) {
-    console.error("Unable to load orders", error);
+  } catch {
     return [];
-  }
-}
-
-const SAMPLE_ORDERS: { title: string; state: OrderState }[] = [
-  { title: "AirPods Pro (2nd gen)", state: "Order Processing" },
-  { title: "Mechanical keyboard — walnut case", state: "Order Fulfillment & Preparation" },
-  { title: 'LG UltraFine 27" monitor', state: "Transit and Linehaul" },
-  { title: "Espresso machine — refurbished", state: "Destination & Import Processing" },
-  { title: "Running shoes, size 43", state: "Last-Mile Delivery" },
-];
-
-// Dev convenience: drop a few fake orders spread across the pipeline for a user.
-export async function seedSampleOrders(
-  userId: string,
-): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
-  const normalizedUserId = validUserId(userId);
-  if (!normalizedUserId) {
-    return { ok: false, error: "Enter a user ID (up to 128 characters)." };
-  }
-
-  try {
-    for (let index = 0; index < SAMPLE_ORDERS.length; index++) {
-      const sample = SAMPLE_ORDERS[index];
-      // Stagger createdAt so the newest-first sort stays stable and realistic.
-      const createdAt = new Date(Date.now() - index * 3_600_000).toISOString();
-      const reachedIndex = ORDER_STATES.indexOf(sample.state);
-      const history: OrderHistoryEntry[] = ORDER_STATES.slice(0, reachedIndex + 1).map(
-        (state, step) => ({
-          state,
-          at: new Date(Date.parse(createdAt) + step * 600_000).toISOString(),
-        }),
-      );
-
-      await addDoc(collection(db, "orders"), {
-        userId: normalizedUserId,
-        title: sample.title,
-        state: sample.state,
-        history,
-        createdAt,
-        updatedAt: history[history.length - 1].at,
-      });
-    }
-
-    revalidatePath("/orders");
-    return { ok: true, count: SAMPLE_ORDERS.length };
-  } catch (error) {
-    console.error("Unable to seed orders", error);
-    return { ok: false, error: "Unable to seed sample orders. Please try again." };
   }
 }
