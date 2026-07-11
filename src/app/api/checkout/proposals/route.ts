@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { ProposeCheckoutRequest } from "../../../../contract";
 import { startPurchaseGate } from "../../../../server/agents/purchase-gate";
 import { createProposal } from "../../../../server/checkout";
-import { getRun } from "../../../../server/pipeline/run";
+import { loadRun } from "../../../../server/pipeline/run";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const run = getRun(body.runId ?? "");
+  const run = await loadRun(body.runId ?? "");
   if (!run?.result) return NextResponse.json({ error: "unknown or unfinished run" }, { status: 404 });
 
   const proposal = createProposal(run.result, body.offerId ?? "");

@@ -2,6 +2,7 @@ import type { Field, MerchantPolicy } from "../../contract";
 import { llmEnabled } from "../agents/client";
 import { fcMap, fcScrape } from "../connectors/firecrawl";
 import { fetchHtml } from "../connectors/jsonld";
+import { LIMITS } from "./limits";
 import type { Emit } from "./run-helpers";
 import {
   parseDeliveryDays,
@@ -22,7 +23,6 @@ import type { RunState } from "./state";
  */
 
 const POLICY_PATH = /dostaw|wysylk|shipping|delivery|zwrot|return|reklamacj|platnosc|payment|regulamin|terms|faq|pomoc|help/i;
-const PAGE_LIMIT = 3;
 
 export type PolicyPageText = { url: string; text: string };
 
@@ -39,25 +39,27 @@ export async function deepenMerchant(state: RunState, offerId: string, emit: Emi
     policyUrls = links
       .map((l) => l.url)
       .filter((u) => POLICY_PATH.test(u))
-      .slice(0, PAGE_LIMIT);
+      .slice(0, LIMITS.policyPages());
   } catch (err) {
     emit({ type: "warning", detail: String(err), label: `Could not map ${merchant.domain}` });
   }
 
-  const pages: PolicyPageText[] = [];
-  for (const url of policyUrls) {
-    try {
-      const direct = await fetchHtml(url);
-      if (direct.html) {
-        pages.push({ url, text: htmlToText(direct.html) });
-        continue;
-      }
-      const doc = await fcScrape(url, ["markdown"]);
-      if (doc.markdown) pages.push({ url, text: doc.markdown });
-    } catch {
-      // page-level failures are fine; we report what we learned overall
-    }
-  }
+  // read the merchant's policy pages in parallel
+  const pages: PolicyPageText[] = (
+    await Promise.all(
+      policyUrls.map(async (url): Promise<PolicyPageText | undefined> => {
+        try {
+          const direct = await fetchHtml(url);
+          if (direct.html) return { url, text: htmlToText(direct.html) };
+          const doc = await fcScrape(url, ["markdown"]);
+          if (doc.markdown) return { url, text: doc.markdown };
+        } catch {
+          // page-level failures are fine; we report what we learned overall
+        }
+        return undefined;
+      }),
+    )
+  ).filter((p): p is PolicyPageText => Boolean(p));
 
   let learned = applyPolicyHeuristics(state, merchant.id, pages);
 
@@ -72,6 +74,21 @@ export async function deepenMerchant(state: RunState, offerId: string, emit: Emi
     }
   }
 
+  // fields we searched for but could not establish become explicit deferred items
+  const policy = state.policies.get(merchant.id);
+  if (policy) {
+    const defer = (reason: string) => ({ reason, resolvableAt: "cart" as const });
+    if (!policy.shipping.value && !policy.shipping.deferred) {
+      policy.shipping.deferred = defer(`no shipping facts on ${merchant.domain}'s pages — exact cost usually appears at cart stage`);
+    }
+    if (!policy.returns.value && !policy.returns.deferred) {
+      policy.returns.deferred = defer(`no return policy found on ${merchant.domain} — statutory 14-day EU distance-selling right may still apply`);
+    }
+    if (!policy.payment.value && !policy.payment.deferred) {
+      policy.payment.deferred = defer(`payment methods not listed — revealed at checkout`);
+    }
+  }
+
   emit({
     type: "deep_dive_completed",
     merchantDomain: merchant.domain,
@@ -79,7 +96,7 @@ export async function deepenMerchant(state: RunState, offerId: string, emit: Emi
     learned,
     label: learned.length
       ? `${merchant.name}: learned ${learned.join(", ")}`
-      : `${merchant.name}: no policy pages found — offer stays flagged as unverified`,
+      : `${merchant.name}: no policy pages found — deferred, may resolve at cart stage`,
   });
   return pages;
 }

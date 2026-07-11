@@ -26,7 +26,8 @@ const writer = new Agent({
   instructions:
     "You write one-sentence purchase recommendations. Use the same language as the user's request. " +
     "Be concrete (product, store, delivered price) and honest about compromises and unverified facts. " +
-    "Never invent facts not present in the input. Keep each headline under 200 characters.",
+    "Never invent facts not present in the input — a missing fact is 'unverified'/'deferred', never a guessed value; " +
+    "if shipping or returns are unknown, say so plainly. Keep each headline under 200 characters.",
   outputType: WriterOutput,
 });
 

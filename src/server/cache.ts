@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { auditKeyOf, recordAudit } from "./audit";
 
 /**
  * Record/replay cache wrapped around every external call (SerpAPI, Firecrawl,
@@ -43,19 +44,32 @@ export async function cached<T>(
   const keyJson = stableStringify(key);
   const hash = createHash("sha256").update(keyJson).digest("hex").slice(0, 24);
   const file = path.join(cacheRoot(), namespace, `${hash}.json`);
+  const startedAt = Date.now();
+  const audit = (cacheHit: boolean, ok: boolean, error?: string) =>
+    recordAudit({ source: namespace, key: auditKeyOf(key), at: new Date(startedAt).toISOString(), ms: Date.now() - startedAt, cacheHit, ok, error });
 
   if (mode === "auto" || mode === "replay") {
     try {
       const raw = await readFile(file, "utf8");
-      return (JSON.parse(raw) as { value: T }).value;
+      const value = (JSON.parse(raw) as { value: T }).value;
+      audit(true, true);
+      return value;
     } catch {
       if (mode === "replay") {
+        audit(true, false, "replay miss");
         throw new Error(`cache replay miss: ${namespace} ${keyJson.slice(0, 200)}`);
       }
     }
   }
 
-  const value = await fn();
+  let value: T;
+  try {
+    value = await fn();
+  } catch (err) {
+    audit(false, false, String(err).slice(0, 300));
+    throw err;
+  }
+  audit(false, true);
 
   if (mode !== "live") {
     await mkdir(path.dirname(file), { recursive: true });

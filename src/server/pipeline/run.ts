@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ProgressEvent, RecommendationSet, ResearchRequest } from "../../contract";
 import { FIXTURE_RESULT, makeFixtureEvents } from "../../contract";
 import { llmEnabled } from "../agents/client";
+import { auditStorage, type AuditEntry } from "../audit";
 import { deepenMerchant } from "./deepen";
+import { LIMITS } from "./limits";
 import { discover } from "./discover";
 import { assess, pickDeepDives, recommend } from "./rank";
 import type { Emit } from "./run-helpers";
-import { newRunState, toRecommendationSet } from "./state";
+import { hydrateState, newRunState, toRecommendationSet } from "./state";
 import { standardize } from "./standardize";
 
 /**
@@ -24,13 +26,46 @@ type RunEntry = {
   events: ProgressEvent[];
   listeners: Set<(e: ProgressEvent) => void>;
   result?: RecommendationSet;
+  audit: AuditEntry[];
+  request?: ResearchRequest;
 };
 
 const globalStore = globalThis as unknown as { __researchRuns?: Map<string, RunEntry> };
 const runs: Map<string, RunEntry> = (globalStore.__researchRuns ??= new Map());
 
+const runFile = (runId: string) => path.join(process.cwd(), "data", "runs", `${runId}.json`);
+
 export function getRun(runId: string): RunEntry | undefined {
   return runs.get(runId);
+}
+
+/** Registry lookup with file fallback — completed runs survive server restarts. */
+export async function loadRun(runId: string): Promise<RunEntry | undefined> {
+  const inMemory = runs.get(runId);
+  if (inMemory) return inMemory;
+  if (!/^run-[a-z0-9-]+$/i.test(runId)) return undefined;
+  try {
+    const raw = JSON.parse(await readFile(runFile(runId), "utf8")) as {
+      status: RunEntry["status"];
+      result?: RecommendationSet;
+      events?: ProgressEvent[];
+      audit?: AuditEntry[];
+      request?: ResearchRequest;
+    };
+    const entry: RunEntry = {
+      id: runId,
+      status: raw.status,
+      result: raw.result,
+      events: raw.events ?? [],
+      audit: raw.audit ?? [],
+      request: raw.request,
+      listeners: new Set(),
+    };
+    runs.set(runId, entry);
+    return entry;
+  } catch {
+    return undefined;
+  }
 }
 
 export function subscribe(runId: string, cb: (e: ProgressEvent) => void): (() => void) | undefined {
@@ -49,11 +84,13 @@ function emitTo(run: RunEntry): Emit {
   };
 }
 
-async function persist(run: RunEntry): Promise<void> {
+export async function persist(run: RunEntry): Promise<void> {
   try {
-    const dir = path.join(process.cwd(), "data", "runs");
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, `${run.id}.json`), JSON.stringify({ status: run.status, result: run.result }, null, 1));
+    await mkdir(path.dirname(runFile(run.id)), { recursive: true });
+    await writeFile(
+      runFile(run.id),
+      JSON.stringify({ status: run.status, result: run.result, events: run.events, audit: run.audit, request: run.request }, null, 1),
+    );
   } catch {
     // persistence is best-effort
   }
@@ -61,13 +98,42 @@ async function persist(run: RunEntry): Promise<void> {
 
 export function startRun(request: ResearchRequest): string {
   const id = `run-${randomUUID().slice(0, 8)}`;
-  const run: RunEntry = { id, status: "running", events: [], listeners: new Set() };
+  const run: RunEntry = { id, status: "running", events: [], listeners: new Set(), audit: [], request };
   runs.set(id, run);
-  void (request.mode === "fixture" ? executeFixture(run) : executeLive(run, request)).catch((err) => {
-    run.status = "failed";
-    emitTo(run)({ type: "run_failed", detail: String(err), label: "Research failed" });
-  });
+  void auditStorage
+    .run(run.audit, () => (request.mode === "fixture" ? executeFixture(run) : executeLive(run, request)))
+    .catch(async (err) => {
+      run.status = "failed";
+      emitTo(run)({ type: "run_failed", detail: String(err), label: "Research failed" });
+      await persist(run);
+    });
   return id;
+}
+
+/**
+ * On-demand deepening: the user opened a product's detail view — verify that
+ * merchant's policies now. Re-assesses and persists the updated result; new
+ * events append to the run's history (and stream to any open subscribers).
+ */
+export async function deepenOnDemand(runId: string, offerId: string): Promise<RecommendationSet | { error: string }> {
+  const run = await loadRun(runId);
+  if (!run?.result) return { error: "unknown or unfinished run" };
+  if (run.request?.mode !== "live") return { error: "on-demand deepening works on live runs only" };
+  if (!run.result.offers[offerId]) return { error: `unknown offer ${offerId}` };
+
+  const emit = emitTo(run);
+  const state = hydrateState(run.id, run.request, run.result);
+  await auditStorage.run(run.audit, () => deepenMerchant(state, offerId, emit));
+
+  const assessments = assess(state);
+  const recommendations = recommend(state, assessments);
+  run.result = toRecommendationSet(state, {
+    assessments,
+    recommendations,
+    roundsCompleted: run.result.roundsCompleted + 1,
+  });
+  await persist(run);
+  return run.result;
 }
 
 async function executeFixture(run: RunEntry): Promise<void> {
@@ -89,7 +155,7 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
   const emit = emitTo(run);
   const state = newRunState(run.id, request);
   const maxRounds = request.limits?.maxRounds ?? 2;
-  const deepDiveCount = request.limits?.deepDiveCount ?? 4;
+  const deepDiveCount = request.limits?.deepDiveCount ?? LIMITS.deepDives();
 
   emit({ type: "run_started", mode: "live", label: `Researching: ${request.brief.request}` });
 
