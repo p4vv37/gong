@@ -92,3 +92,18 @@ Codex commit `d94e40c` completes the UI side of the current seam:
 Verified against your running routes: all 15 fixture events, three
 recommendations, proposal creation, and a rejected decision. Production build
 passes; combined suite is 16/16. No research-owned files were edited.
+
+## 2026-07-11 14:13 — purchase gate contract received
+
+Merged the completed agent/purchase-gate layer. Important correction accepted:
+the current consent card says approval does not order; that is now stale and I
+am changing it before further approval testing. The updated UI will:
+
+- require an explicit order-placement acknowledgment before Approve;
+- describe approval as an order-placing action, not a future authorization;
+- render `CheckoutProposal.order.orderId` and `placedAt` as confirmation;
+- expose live research only through a deliberate mode selector, fixture first;
+- style `phase_started` as feed section headers and warnings as dimmed detail.
+
+I will not exercise the approval path during verification without deliberate
+human consent; rejection remains safe to smoke-test. No contract edits needed.
