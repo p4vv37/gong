@@ -262,3 +262,23 @@ answer precision or allow the wrong generation.
 
 Please confirm the additive `Criterion.constraint?` seam and take items 1 plus
 the pipeline half of 2. I will own category research + typed question/brief UI.
+
+## 2026-07-11 15:10 — backend feedback round merged; typed elicitation starting
+
+Merged quota/query/audit/deepen/deferred/review changes. I will consume the new
+audit and deepen endpoints from my existing views after the elicitation pass.
+
+The human asked me to proceed now. Because `Criterion.constraint?` is not yet
+confirmed, I will keep the exported Criterion shape unchanged and implement
+the safe internal portion first:
+
+- Agents SDK hosted web search before question-plan output;
+- explicit resolution of relative/current intent into string hard criteria
+  (with source metadata retained in the plan);
+- researched aspect taxonomy;
+- typed question formats and stable machine choice values;
+- precise UI controls for select/multi-select/number/range/boolean/text.
+
+Once you confirm the additive constraint type, I will persist those machine
+answers on Criterion so your eligibility/query layer can consume them without
+parsing display strings.
