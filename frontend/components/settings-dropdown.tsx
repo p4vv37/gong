@@ -56,19 +56,19 @@ export function SettingsDropdown({
   }
 
   const tabClass =
-    activeTab === "status"
+    activeTab === "updates"
       ? "status-active"
       : activeTab === "calls"
         ? "call-active"
         : "";
 
   return (
-    <div className="relative md:fixed w-full md:w-2/5 z-10">
+    <div className="relative z-50">
       <div
         ref={ref}
         id="settings"
         tabIndex={-1}
-        className={`fixed md:absolute top-0 right-0 dark:bg-WADarkGreen dark:text-white focus:outline-none w-3/5 text-black bg-white shadow-md ${tabClass} ${
+        className={`fixed top-[calc(env(safe-area-inset-top)+3.5rem)] right-4 max-w-[18rem] w-[72%] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 dark:bg-[#202020] dark:text-white focus:outline-none text-black bg-white shadow-2xl ${tabClass} ${
           closing ? "animate-fade-out" : "animate-slide-in-down"
         }`}
       >

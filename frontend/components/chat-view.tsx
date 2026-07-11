@@ -1,21 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { SelectedChat } from "@/lib/types";
 import { friendImagePath } from "@/lib/data";
+import { BackIcon, PhoneIcon, VideoIcon } from "@/components/ios-icons";
+import { useCallback, useRef, useState } from "react";
 import { ChatBody, MessageInput } from "@/components/message-input";
-
-const chatOptions = [
-  "View contact",
-  "Media, links and docs",
-  "Search",
-  "Mute notification",
-  "Disappearing messages",
-  "Wallpaper",
-  "More",
-];
+import type { AgentRequestMessage, AgentResponse, ConversationMessage } from "@/lib/types";
 
 type ChatViewProps = {
   chat: SelectedChat;
@@ -23,119 +15,83 @@ type ChatViewProps = {
 };
 
 export function ChatView({ chat, showBackLink = false }: ChatViewProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsClosing, setSettingsClosing] = useState(false);
-  const settingsRef = useRef<HTMLDivElement>(null);
-  const imageSrc = friendImagePath(chat.imgName, chat.imgFormat);
+  const imageSrc = friendImagePath(chat.imgName, chat.imgFormat, chat.imgSrc);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [agentIsTyping, setAgentIsTyping] = useState(false);
+  const messagesRef = useRef<ConversationMessage[]>([]);
+  const pendingRequests = useRef(0);
 
-  const closeSettings = () => {
-    setSettingsClosing(true);
-    setTimeout(() => {
-      setSettingsOpen(false);
-      setSettingsClosing(false);
-    }, 500);
-  };
+  const appendMessage = useCallback((message: ConversationMessage) => {
+    messagesRef.current = [...messagesRef.current, message];
+    setMessages(messagesRef.current);
+  }, []);
 
-  useEffect(() => {
-    if (!settingsOpen) {
-      return;
+  const sendMessage = useCallback(async (content: string) => {
+    const userMessage: ConversationMessage = {
+      id: crypto.randomUUID(),
+      type: "user",
+      content,
+      sentAt: new Date().toISOString(),
+    };
+    const requestMessages: AgentRequestMessage[] = [...messagesRef.current, userMessage].map((message) => ({
+      role: message.type === "user" ? "user" : "assistant",
+      content: message.content,
+    }));
+
+    appendMessage(userMessage);
+    pendingRequests.current += 1;
+    setAgentIsTyping(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: requestMessages }),
+      });
+
+      if (!response.ok) throw new Error("The agent request failed");
+
+      const payload: AgentResponse = await response.json();
+      appendMessage({ ...payload.message, id: crypto.randomUUID(), sentAt: new Date().toISOString() });
+    } catch {
+      appendMessage({
+        id: crypto.randomUUID(),
+        type: "agent",
+        content: "Sorry, I couldn't get a response. Please try again.",
+        sentAt: new Date().toISOString(),
+      });
+    } finally {
+      pendingRequests.current -= 1;
+      setAgentIsTyping(pendingRequests.current > 0);
     }
-
-    const handleBlur = () => closeSettings();
-    const node = settingsRef.current;
-    node?.addEventListener("blur", handleBlur);
-    node?.focus({ preventScroll: true });
-
-    return () => node?.removeEventListener("blur", handleBlur);
-  }, [settingsOpen]);
+  }, [appendMessage]);
 
   return (
-    <div className="relative font-roboto w-full h-full">
-      <div className="relative w-full">
-        <div
-          ref={settingsRef}
-          id="chat-settings"
-          tabIndex={-1}
-          className={`fixed top-0 right-0 md:absolute md:w-2/5 dark:bg-WADarkGreen dark:text-white focus:outline-none z-20 w-3/5 text-black bg-white shadow-md ${
-            settingsOpen
-              ? settingsClosing
-                ? "animate-fade-out"
-                : "animate-slide-in-down"
-              : "hidden"
-          }`}
-        >
-          <ul>
-            {chatOptions.map((option) => (
-              <li key={option} className="options">
-                {option}
-              </li>
-            ))}
-          </ul>
+    <main className="ios-chat-view">
+      <header className="ios-chat-header">
+        <div className="ios-chat-contact">
+          {showBackLink ? (
+            <Link className="ios-chat-back" href="/" aria-label="Back to chats">
+              <BackIcon />
+            </Link>
+          ) : null}
+          <Image className="ios-chat-contact-avatar" src={imageSrc} alt="" width={56} height={56} />
+          <div className="ios-chat-contact-copy">
+            <h1>{chat.friendName}</h1>
+            <p>{chat.friendStatus === "Online" ? "online" : "tap to add to contacts"}</p>
+          </div>
         </div>
-      </div>
-
-      <header className="sticky top-0 z-10 bg-WATeal dark:bg-WADarkTeal dark:text-gray-400 flex flex-col w-full p-3 text-white">
-        <div className="flex flex-row items-center">
-          <div className="flex">
-            {showBackLink ? (
-              <Link href="/" className="flex-center mr-2 invert-[1]">
-                <Image
-                  className="w-5"
-                  src="https://img.icons8.com/android/96/null/left.png"
-                  alt="back icon"
-                  width={20}
-                  height={20}
-                  unoptimized
-                />
-              </Link>
-            ) : null}
-            <div className="flex-center">
-              <Image
-                className="w-9 h-9 object-cover rounded-full"
-                src={imageSrc}
-                alt="friend"
-                width={36}
-                height={36}
-              />
-            </div>
-            <div className="flex flex-col px-3 py-1">
-              <div className="text-sm font-bold text-white">{chat.friendName}</div>
-              <div className="text-xs font-normal text-white">{chat.friendStatus}</div>
-            </div>
-          </div>
-          <div className="flex gap-4 ml-auto">
-            <Image
-              className="dual w-6"
-              src="https://img.icons8.com/android/96/null/video-call.png"
-              alt="video call"
-              width={24}
-              height={24}
-              unoptimized
-            />
-            <Image
-              className="dual w-6"
-              src="https://img.icons8.com/material-sharp/96/000000/phone.png"
-              alt="phone"
-              width={24}
-              height={24}
-              unoptimized
-            />
-            <button type="button" onClick={() => setSettingsOpen(true)}>
-              <Image
-                className="dual w-6"
-                src="https://img.icons8.com/external-glyph-silhouettes-icons-papa-vector/100/null/external-Menu-interface-glyph-silhouettes-icons-papa-vector-3.png"
-                alt="kebab"
-                width={24}
-                height={24}
-                unoptimized
-              />
-            </button>
-          </div>
+        <div className="ios-chat-actions">
+          <button type="button" aria-label="Start video call"><VideoIcon /></button>
+          <button type="button" aria-label="Start voice call"><PhoneIcon /></button>
         </div>
       </header>
-
-      <ChatBody />
-      <MessageInput />
-    </div>
+      <ChatBody
+        messages={messages}
+        agentIsTyping={agentIsTyping}
+        onArtifactButton={(buttonContent) => sendMessage(`user responded with: ${buttonContent}`)}
+      />
+      <MessageInput onSend={sendMessage} />
+    </main>
   );
 }

@@ -10,6 +10,7 @@ export function ChatPageContent() {
   const friendStatus = searchParams.get("friendStatus");
   const imgName = searchParams.get("imgName");
   const imgFormat = searchParams.get("imgFormat");
+  const imgSrc = searchParams.get("imgSrc") ?? undefined;
 
   if (!friendName || !friendStatus || !imgName || !imgFormat) {
     return (
@@ -28,6 +29,7 @@ export function ChatPageContent() {
           friendStatus,
           imgName,
           imgFormat,
+          imgSrc,
         }}
       />
       <SvgSymbols />

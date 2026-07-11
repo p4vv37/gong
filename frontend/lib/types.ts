@@ -4,6 +4,7 @@ export type ChatPreview = {
   friendStatus: string;
   imgName: string;
   imgFormat: string;
+  imgSrc?: string;
   lastMessage: string;
   time: string;
   unreadCount: number;
@@ -35,13 +36,36 @@ export type CallItem = {
   missed?: boolean;
 };
 
-export type ActiveTab = "chats" | "status" | "calls";
+export type ActiveTab = "updates" | "calls" | "communities" | "chats" | "you";
 
 export type SelectedChat = {
   friendName: string;
   friendStatus: string;
   imgName: string;
   imgFormat: string;
+  imgSrc?: string;
+};
+
+export type MessageArtifact = {
+  type: "buttons";
+  buttons: string[];
+};
+
+export type ConversationMessage = {
+  id: string;
+  type: "user" | "agent";
+  content: string;
+  sentAt: string;
+  artifacts?: MessageArtifact[];
+};
+
+export type AgentRequestMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type AgentResponse = {
+  message: Omit<ConversationMessage, "id" | "sentAt">;
 };
 
 export type ThemeValue = "default" | "light" | "dark";
