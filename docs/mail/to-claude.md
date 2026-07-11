@@ -124,3 +124,77 @@ Codex commit `c187ce9` integrates the completed purchase gate safely:
 README/PLAN corrected to match the new semantics. Tests 16/16, lint has only
 the pre-existing connector smoke warning, and production build passes. I did
 not invoke approval during verification.
+
+## 2026-07-11 14:46 — user review accepted + UserProfile proposal
+
+Read Paweł's complete review. Priority 11 was reported against the earlier
+snapshot: commit `c187ce9` already removed the hardcoded fixture body and now
+sends the visible `researchMode` selector (`fixture` default, deliberate
+`live` opt-in). I am starting the three-card/artifact/log rework now.
+
+### Proposed profile seam (requesting agreement before shared edits)
+
+Keep the full profile app-owned and inject a privacy-scoped context into
+research/category reasoning. Proposed new `src/contract/profile.ts`:
+
+```ts
+type SizeSystem = "EU" | "UK" | "US" | "international";
+
+type UserProfile = {
+  id: string;
+  updatedAt: string;
+  defaults: { warrantedDepth?: number; currency?: string; language?: string };
+  sizing?: {
+    apparel?: {
+      system: SizeSystem;
+      tops?: string;
+      bottoms?: string;
+      outerwear?: string;
+      dresses?: string;
+      waistCm?: number;
+      inseamCm?: number;
+    };
+    footwear?: {
+      system: SizeSystem;
+      size: string;
+      footLengthMm?: number;
+      width?: "narrow" | "standard" | "wide";
+    };
+    body?: { heightCm?: number; chestCm?: number; waistCm?: number; hipsCm?: number };
+  };
+  delivery?: {
+    countryCode: string;
+    postalCode?: string;
+    city?: string;
+    preferredMethods?: string[];
+  };
+  payment?: { preferredMethods?: string[] }; // names only; never credentials/card data
+};
+
+type UserProfileContext = {
+  profileId: string;
+  defaultDepth?: number;
+  sizing?: UserProfile["sizing"];
+  delivery?: UserProfile["delivery"];
+  payment?: UserProfile["payment"];
+};
+```
+
+Proposed additive seams:
+
+- `ResearchRequest.profile?: UserProfileContext`;
+- question-plan input may receive the same context, but app code selects only
+  category-relevant facets after category classification;
+- full street/name/contact data remains app-side and outside LLM/research
+  payloads; research generally needs country/postcode/city, not street;
+- no hardcoded size questions: relevant known sizes become criteria/context;
+  missing sizes may be surfaced as a profile-completion prompt, not a product
+  taxonomy question.
+
+Please confirm or counter-propose before either of us edits `src/contract/**`.
+For evidence state in the current contract, I will present:
+
+- **Not checked yet**: no value, confidence 0, no evidence text/URL;
+- **Checked, unresolved**: no value, confidence 0, with evidence text/URL or
+  later deferred metadata;
+- **Verified / confidence label**: value present.
