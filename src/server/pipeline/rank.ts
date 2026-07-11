@@ -1,4 +1,4 @@
-import type { Criterion, MerchantPolicy, Offer, OfferAssessment, Recommendation } from "../../contract";
+import type { Criterion, MerchantPolicy, Offer, OfferAssessment, PriceBracket, Recommendation } from "../../contract";
 import type { RunState } from "./state";
 
 /**
@@ -55,7 +55,14 @@ function criterionMatch(c: Criterion, corpus: string): boolean | undefined {
   return undefined; // absence of words is not evidence of absence
 }
 
-export function assess(state: RunState): Record<string, OfferAssessment> {
+/** 0..1 position of a delivered price inside the independent market bracket (1 = at the floor). */
+function bracketValue(delivered: number, bracket: PriceBracket): number {
+  const span = bracket.premium - bracket.low;
+  if (span <= 0) return 0.5;
+  return 1 - Math.min(1, Math.max(0, (delivered - bracket.low) / span));
+}
+
+export function assess(state: RunState, bracket?: PriceBracket): Record<string, OfferAssessment> {
   const brief = state.request.brief;
   const out: Record<string, OfferAssessment> = {};
 
@@ -125,6 +132,11 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
     if (!policy?.returns.value) unknowns.push("returns");
     if (!policy?.payment.value) unknowns.push("payment");
 
+    const delivered = deliveredOf(offer);
+    // anchor to the independent market bracket so a skewed scrape pool can't
+    // make a bad price look great; too-cheap offers are a risk, not a bargain
+    const suspiciouslyCheap = bracket && delivered !== undefined && delivered < bracket.low * 0.5;
+
     // trust: product/merchant reviews when present
     const productReview = state.reviews.find((r) => r.subject === "product" && r.subjectId === offer.productId);
     const merchantReview = state.reviews.find((r) => r.subject === "merchant" && r.subjectId === offer.merchantId);
@@ -133,13 +145,14 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
     const riskPenalty =
       (merchantReview?.risks?.length ? 0.5 : 0) +
       (merchantReview?.manipulationRisk === "suspicious" ? 0.5 : 0) +
-      (offer.condition === "used" ? 0.4 : 0); // used items must not silently win
+      (offer.condition === "used" ? 0.4 : 0) + // used items must not silently win
+      (suspiciouslyCheap ? 0.35 : 0); // far below market floor → likely wrong variant, listing error or scam
 
-    const delivered = deliveredOf(offer);
-    const value =
+    const poolValue =
       delivered === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
         ? 0.5
         : 1 - (delivered - minPrice) / (maxPrice - minPrice);
+    const value = bracket && delivered !== undefined ? (poolValue + bracketValue(delivered, bracket)) / 2 : poolValue;
     const preferenceFit = preferTotal ? Math.min(1, preferHit / preferTotal) : 0.5;
     const uncertaintyPenalty = Math.min(1, unknowns.length / 6);
     const merchantTrustBoost = merchant?.platform === "shopify" ? 0.05 : 0;
@@ -178,7 +191,11 @@ export function pickDeepDives(state: RunState, assessments: Record<string, Offer
     .map((a) => a.offerId);
 }
 
-export function recommend(state: RunState, assessments: Record<string, OfferAssessment>): Recommendation[] {
+export function recommend(
+  state: RunState,
+  assessments: Record<string, OfferAssessment>,
+  bracket?: PriceBracket,
+): Recommendation[] {
   const eligible = Object.values(assessments)
     .filter((a) => a.eligible)
     .sort((a, b) => b.score.total - a.score.total);
@@ -207,6 +224,11 @@ export function recommend(state: RunState, assessments: Record<string, OfferAsse
     const shippingCost = offer?.delivery?.value?.cost?.amount ?? policy?.shipping.value?.cost?.amount;
     if (shippingCost) out.push(`shipping ${shippingCost} PLN`);
     if (offer?.condition === "used") out.push("used / second-life item");
+    if (bracket && offer) {
+      const delivered = effectiveTotal(offer, policy) ?? offer.price.value?.amount;
+      if (delivered !== undefined && delivered > bracket.premium) out.push(`above the typical market range (${bracket.typical[0]}–${bracket.typical[1]} ${bracket.currency})`);
+      if (delivered !== undefined && delivered < bracket.low * 0.5) out.push("suspiciously cheap vs the market — verify before trusting");
+    }
     return out;
   };
 

@@ -1,4 +1,4 @@
-import type { RecommendationSet } from "./research";
+import type { PriceBracket, RecommendationSet } from "./research";
 
 /**
  * Progress events streamed over SSE while a research run executes.
@@ -23,6 +23,7 @@ export type ProgressEvent =
   | (Base & { type: "run_started"; mode: "fixture" | "live" })
   | (Base & { type: "phase_started"; phase: ResearchPhase; round: number })
   | (Base & { type: "source_searched"; channel: "serpapi" | "firecrawl" | "shopify_probe" })
+  | (Base & { type: "price_bracket"; bracket: PriceBracket })
   | (Base & { type: "candidate_found"; url: string; merchantDomain: string })
   | (Base & { type: "offer_normalized"; offerId: string; extractionSource: string })
   | (Base & { type: "offers_ranked"; eligibleCount: number; round: number })

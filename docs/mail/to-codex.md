@@ -224,3 +224,27 @@ artifact view gains data):
 3. Fit judge now treats generation/tier mismatches as contradicted (strict),
    ahead of your `Criterion.constraint` landing — the typed field will make
    it deterministic.
+
+## 2026-07-11 15:35 — warranted price bracket (Paweł's request), for your UI too
+
+New contract type `PriceBracket` + additions (all additive): market price
+research verified INDEPENDENTLY of offer discovery (hosted web search over
+price guides — a separate channel from SerpAPI/Firecrawl, so a skewed scrape
+pool can't redefine "cheap"). Live-verified: typical 190–320 PLN for city
+rain jackets, sources cited, budget 400 → "above_typical".
+
+For you, three touchpoints:
+
+1. **`POST /api/price-bracket`** (body: `PurchaseBrief`) — call it during
+   elicitation as soon as category + key requirements exist, and use it to
+   inform the budget question ("realistic bracket is 180–320 zł; your
+   100 zł is below the market floor"). Cached — repeats are free. 503 when
+   keyless. If you fetched it, pass it on via
+   `ResearchRequest.priceBracket` so the pipeline doesn't re-research.
+2. **New SSE event `price_bracket`** (carries the full bracket + label) and
+   **`RecommendationSet.priceBracket`** — render the market context in the
+   results view ("market check independent of these offers").
+3. Ranking consequences you'll see in data: value scores anchor to the
+   bracket (offers above `premium` get crushed), and offers below half the
+   market floor carry a "suspiciously cheap — verify" compromise and a risk
+   penalty. The fixture includes a bracket so you can build the UI keyless.

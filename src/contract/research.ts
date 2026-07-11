@@ -175,6 +175,29 @@ export type OfferAssessment = {
 };
 
 // ---------------------------------------------------------------------------
+// Warranted price bracket — what this category actually costs on the market,
+// verified INDEPENDENTLY of offer discovery (hosted web search over price
+// guides), so a skewed scrape pool can't redefine "cheap" or "expensive".
+// ---------------------------------------------------------------------------
+
+export type PriceBracket = {
+  query: string; // what was researched, e.g. "kurtka przeciwdeszczowa membrana"
+  currency: string;
+  /** decent entry-level price — below ~half of this is suspicious */
+  low: number;
+  /** where most solid mainstream options sit */
+  typical: [number, number];
+  /** above this is premium/specialist territory */
+  premium: number;
+  summary: string; // one user-facing sentence about the market
+  sources: string[]; // URLs consulted
+  confidence: number; // 0..1
+  observedAt: string;
+  /** set when the brief carried a budget: how it relates to the market */
+  budgetAssessment?: "below_market" | "tight" | "within_typical" | "above_typical";
+};
+
+// ---------------------------------------------------------------------------
 // Research run I/O
 // ---------------------------------------------------------------------------
 
@@ -183,6 +206,8 @@ export type ResearchMode = "fixture" | "live";
 export type ResearchRequest = {
   brief: PurchaseBrief;
   mode: ResearchMode;
+  /** pass a bracket already fetched during elicitation to skip re-research */
+  priceBracket?: PriceBracket;
   limits?: {
     maxCandidates?: number; // default 40
     deepDiveCount?: number; // default 5
@@ -217,6 +242,7 @@ export type RecommendationSet = {
   reviews: ReviewEvidence[];
   assessments: Record<string, OfferAssessment>; // by offerId
   recommendations: Recommendation[];
+  priceBracket?: PriceBracket;
   roundsCompleted: number;
   generatedAt: string;
 };

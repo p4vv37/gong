@@ -215,6 +215,18 @@ export const FIXTURE_RESULT: RecommendationSet = {
       whyNotTheOthers: "OutletWear has a 3.1★ seller rating with delay reports and no discoverable policies.",
     },
   ],
+  priceBracket: {
+    query: "waterproof jacket for city commuting",
+    currency: "PLN",
+    low: 150,
+    typical: [250, 550],
+    premium: 900,
+    summary: "Solidne miejskie kurtki przeciwdeszczowe kosztują zwykle 250–550 zł; poniżej 150 zł membrany bywają symboliczne.",
+    sources: ["https://example.pl/ranking-kurtek-przeciwdeszczowych"],
+    confidence: 0.8,
+    observedAt: "2026-07-11T10:00:30.000Z",
+    budgetAssessment: "within_typical",
+  },
   roundsCompleted: 2,
   generatedAt: "2026-07-11T10:02:30.000Z",
 };

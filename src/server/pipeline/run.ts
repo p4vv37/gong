@@ -126,13 +126,17 @@ export async function deepenOnDemand(runId: string, offerId: string): Promise<Re
   const state = hydrateState(run.id, run.request, run.result);
   await auditStorage.run(run.audit, () => deepenMerchant(state, offerId, emit));
 
-  const assessments = assess(state);
-  const recommendations = recommend(state, assessments);
-  run.result = toRecommendationSet(state, {
-    assessments,
-    recommendations,
-    roundsCompleted: run.result.roundsCompleted + 1,
-  });
+  const bracket = run.result.priceBracket;
+  const assessments = assess(state, bracket);
+  const recommendations = recommend(state, assessments, bracket);
+  run.result = {
+    ...toRecommendationSet(state, {
+      assessments,
+      recommendations,
+      roundsCompleted: run.result.roundsCompleted + 1,
+    }),
+    priceBracket: bracket,
+  };
   await persist(run);
   return run.result;
 }
@@ -160,6 +164,18 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
 
   emit({ type: "run_started", mode: "live", label: `Researching: ${request.brief.request}` });
 
+  // warranted price bracket runs CONCURRENTLY with discovery and comes from
+  // an independent channel (hosted web search), so the scrape pool can't
+  // skew what counts as cheap or expensive
+  const bracketPromise: Promise<typeof request.priceBracket> = request.priceBracket
+    ? Promise.resolve(request.priceBracket)
+    : llmEnabled()
+      ? import("../agents/price-bracket").then(({ researchPriceBracket }) => researchPriceBracket(request.brief)).catch((err) => {
+          emit({ type: "warning", detail: String(err), label: "Market price research unavailable — ranking on discovered prices only" });
+          return undefined;
+        })
+      : Promise.resolve(undefined);
+
   emit({ type: "phase_started", phase: "discovery", round: 1, label: "Searching Google Shopping, the open web and store catalogs…" });
   await discover(state, emit);
 
@@ -177,7 +193,22 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
     }
   }
 
-  let assessments = assess(state);
+  const bracket = await bracketPromise;
+  if (bracket) {
+    const budgetNote =
+      bracket.budgetAssessment === "below_market"
+        ? " — your budget is below the realistic market floor"
+        : bracket.budgetAssessment === "tight"
+          ? " — your budget is tight for this category"
+          : "";
+    emit({
+      type: "price_bracket",
+      bracket,
+      label: `Market check (independent of these offers): typical ${bracket.typical[0]}–${bracket.typical[1]} ${bracket.currency}, premium above ${bracket.premium}${budgetNote}`,
+    });
+  }
+
+  let assessments = assess(state, bracket);
   const eligibleCount = Object.values(assessments).filter((a) => a.eligible).length;
   emit({ type: "offers_ranked", eligibleCount, round: 1, label: `${state.offers.size} offers found, ${eligibleCount} within constraints` });
 
@@ -186,12 +217,12 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
     if (targets.length) {
       emit({ type: "phase_started", phase: "deepen", round: 2, label: `Verifying shipping, returns and payments at ${targets.length} stores in parallel…` });
       await Promise.all(targets.map((offerId) => deepenMerchant(state, offerId, emit)));
-      assessments = assess(state);
+      assessments = assess(state, bracket);
       emit({ type: "offers_ranked", eligibleCount: Object.values(assessments).filter((a) => a.eligible).length, round: 2, label: "Re-ranked with verified policies" });
     }
   }
 
-  const recommendations = recommend(state, assessments);
+  const recommendations = recommend(state, assessments, bracket);
   if (llmEnabled() && recommendations.length) {
     try {
       const { polishRecommendations } = await import("../agents/writer");
@@ -200,7 +231,7 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
       emit({ type: "warning", detail: String(err), label: "Prose writer unavailable — using generated headlines" });
     }
   }
-  run.result = toRecommendationSet(state, { assessments, recommendations, roundsCompleted: maxRounds });
+  run.result = { ...toRecommendationSet(state, { assessments, recommendations, roundsCompleted: maxRounds }), priceBracket: bracket };
   run.status = "completed";
   emit({ type: "run_completed", result: run.result, label: `Research complete: ${recommendations.length} recommendations from ${state.offers.size} offers` });
   await persist(run);
