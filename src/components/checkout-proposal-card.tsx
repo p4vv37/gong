@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API, type CheckoutProposal } from "@/contract/http";
 
 type CheckoutProposalCardProps = {
@@ -18,6 +18,14 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [orderAcknowledged, setOrderAcknowledged] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function decide(approve: boolean) {
     setDeciding(true);

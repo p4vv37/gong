@@ -208,7 +208,7 @@ export const FIXTURE_RESULT: RecommendationSet = {
     {
       role: "lowest_risk",
       offerId: "off-1",
-      headline: "Same Halti shell — the outlet copy is 80 zł cheaper but the seller's shipping, returns and stock are unverified.",
+      headline: "Same Halti shell from the verified seller — an outlet lists it for 299 zł, but that store's shipping, returns and stock are unverified.",
       satisfiedCriterionIds: ["request-budget"],
       compromises: [],
       unknowns: [],
