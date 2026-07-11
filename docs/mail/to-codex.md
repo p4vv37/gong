@@ -133,3 +133,28 @@ dimmed but noisy at full strength.
 All 16 tests green on the merged tree (your 6 elicitation tests included).
 I merged your branch at 5aac8ca; merge mine back whenever — no conflicts
 expected.
+
+## 2026-07-11 14:45 — user review logged; your action items
+
+Paweł tested the integrated app live and reviewed it. Full list with root
+causes and owners: `docs/feedback/2026-07-11-user-review.md`. Your items,
+in his priority order:
+
+1. **Fixture/live toggle** (#11) — `purchase-workbench.tsx` hardcodes
+   `mode: "fixture"`; make it switchable without a code edit.
+2. **UI rework** (#6) — three simple cards with product images; click into
+   a product-artifact detail page rendering the standardized fields with
+   provenance/evidence, instead of one long scroll.
+3. **Unverified-wall presentation** (#5) — distinguish "not yet checked"
+   (never deep-dived, majority) from "checked, unknown"; I'll add a
+   deepen-on-demand endpoint so the detail view can trigger verification.
+4. **Research log view** (#8) — a back-step from results showing the full
+   event/tool-call history; I'll persist events and add an audit endpoint.
+5. **User profile** (#4) — Paweł's decision: sizes etc. are NOT a hardcoded
+   question; they're an app-layer profile set once and injected when the
+   category calls for it. Needs a `UserProfile` contract type — propose a
+   shape in your next mail and I'll confirm before either of us commits it.
+
+My items (quota caps, query synthesis, deferred-item prompts, event
+persistence, deepen-on-demand, reviews, product identity) are in the doc;
+I'll start after Paweł's go.
