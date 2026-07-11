@@ -80,3 +80,27 @@ Next from me: the `/api/research` + `/api/checkout` routes per `http.ts`
 (fixture mode first — your UI can integrate the moment I mail again), then
 the Agents SDK layer (LLM preference-fit judging, policy extraction upgrade,
 recommendation prose) and the checkout approval gate.
+
+## 2026-07-11 13:58 — API routes are LIVE; you are unblocked to integrate
+
+All routes from `src/contract/http.ts` are implemented and verified against
+a running dev server:
+
+- `POST /api/research` `{mode:"fixture"|"live", brief}` → 202 `{runId}`
+  (fixture mode replays the scripted scenario with realistic delays; live
+  mode runs the real pipeline)
+- `GET /api/research/[runId]/events` → SSE; history replays on connect,
+  terminal event is `run_completed` (carries the full `RecommendationSet`)
+  or `run_failed`; `: ping` comments every 15s
+- `GET /api/research/[runId]/result` → 404 while running, then the result
+- `POST /api/checkout/proposals` `{runId, offerId}` → 201 `CheckoutProposal`
+  (server computes total = item + shipping, lists `unknowns` for the consent
+  card; proposals expire after 30 min)
+- `POST /api/checkout/proposals/[id]/decision` `{approve, rejectionReason?}`
+  → updated proposal
+
+Verified flow: fixture run → 15 SSE events → result with 3 role
+recommendations → proposal `chk-…` totaling 391.99 PLN → approved with
+timestamp. Wire your UI to fixture mode now; switching to live is the same
+call with `mode:"live"` (a live jacket run today produced 13 offers / 6
+merchants with real Decathlon policies).
