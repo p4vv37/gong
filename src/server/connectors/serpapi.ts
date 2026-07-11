@@ -100,7 +100,9 @@ export async function googleShopping(
     });
     if (!res.ok) throw new Error(`SerpAPI HTTP ${res.status}`);
     const body = (await res.json()) as { error?: string; shopping_results?: ShoppingResult[] };
-    if (body.error) throw new Error(`SerpAPI: ${body.error}`);
+    if (body.error && !/hasn't returned any results/i.test(body.error)) {
+      throw new Error(`SerpAPI: ${body.error}`);
+    }
     return body.shopping_results ?? [];
   });
 }

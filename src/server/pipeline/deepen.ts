@@ -1,4 +1,5 @@
 import type { Field, MerchantPolicy } from "../../contract";
+import { llmEnabled } from "../agents/client";
 import { fcMap, fcScrape } from "../connectors/firecrawl";
 import { fetchHtml } from "../connectors/jsonld";
 import type { Emit } from "./run-helpers";
@@ -58,7 +59,19 @@ export async function deepenMerchant(state: RunState, offerId: string, emit: Emi
     }
   }
 
-  const learned = applyPolicyHeuristics(state, merchant.id, pages);
+  let learned = applyPolicyHeuristics(state, merchant.id, pages);
+
+  // LLM upgrade over the same cached pages (higher-confidence fields win)
+  if (llmEnabled() && pages.length) {
+    try {
+      const { upgradePolicyWithLlm } = await import("../agents/policy-reader");
+      const llmLearned = await upgradePolicyWithLlm(state, merchant.id, pages);
+      learned = [...new Set([...learned, ...llmLearned])];
+    } catch (err) {
+      emit({ type: "warning", detail: String(err), label: `${merchant.name}: policy reader failed, keeping heuristic facts` });
+    }
+  }
+
   emit({
     type: "deep_dive_completed",
     merchantDomain: merchant.domain,

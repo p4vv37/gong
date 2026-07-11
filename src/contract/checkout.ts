@@ -32,6 +32,8 @@ export type CheckoutProposal = {
   status: CheckoutProposalStatus;
   decidedAt?: string;
   rejectionReason?: string;
+  /** set on the decision response once an approval placed the (mock) order */
+  order?: { orderId: string; placedAt: string };
 };
 
 export type CheckoutDecision = {

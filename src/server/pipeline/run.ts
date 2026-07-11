@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ProgressEvent, RecommendationSet, ResearchRequest } from "../../contract";
 import { FIXTURE_RESULT, makeFixtureEvents } from "../../contract";
+import { llmEnabled } from "../agents/client";
 import { deepenMerchant } from "./deepen";
 import { discover } from "./discover";
 import { assess, pickDeepDives, recommend } from "./rank";
@@ -98,6 +99,16 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
   emit({ type: "phase_started", phase: "standardize", round: 1, label: "Reading product pages and normalizing offers…" });
   await standardize(state, emit);
 
+  if (llmEnabled() && state.offers.size) {
+    emit({ type: "phase_started", phase: "rank", round: 1, label: "Judging how well each offer fits your criteria…" });
+    try {
+      const { judgeFit } = await import("../agents/fit-judge");
+      await judgeFit(state);
+    } catch (err) {
+      emit({ type: "warning", detail: String(err), label: "Fit judging unavailable — using keyword matching" });
+    }
+  }
+
   let assessments = assess(state);
   const eligibleCount = Object.values(assessments).filter((a) => a.eligible).length;
   emit({ type: "offers_ranked", eligibleCount, round: 1, label: `${state.offers.size} offers found, ${eligibleCount} within constraints` });
@@ -113,6 +124,14 @@ async function executeLive(run: RunEntry, request: ResearchRequest): Promise<voi
   }
 
   const recommendations = recommend(state, assessments);
+  if (llmEnabled() && recommendations.length) {
+    try {
+      const { polishRecommendations } = await import("../agents/writer");
+      await polishRecommendations(state, recommendations);
+    } catch (err) {
+      emit({ type: "warning", detail: String(err), label: "Prose writer unavailable — using generated headlines" });
+    }
+  }
   run.result = toRecommendationSet(state, { assessments, recommendations, roundsCompleted: maxRounds });
   run.status = "completed";
   emit({ type: "run_completed", result: run.result, label: `Research complete: ${recommendations.length} recommendations from ${state.offers.size} offers` });

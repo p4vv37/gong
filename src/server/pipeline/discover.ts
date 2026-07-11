@@ -10,12 +10,12 @@ import type { RunState } from "./state";
 /** Deterministic query composition from the brief (LLM refinement is a later layer). */
 export function buildQuery(brief: PurchaseBrief): string {
   const parts = [brief.request];
-  for (const c of brief.criteria) {
-    if ((c.kind === "must" || c.kind === "prefer") && c.source === "answer" && c.value.length < 40 && !/budget|budżet/i.test(c.label)) {
-      parts.push(c.value);
-    }
-  }
-  return parts.join(" ").slice(0, 160);
+  // At most two short criterion values — overloaded queries return nothing.
+  const extras = brief.criteria
+    .filter((c) => (c.kind === "must" || c.kind === "prefer") && c.source === "answer" && c.value.length < 30 && !/budget|budżet|stan|condition/i.test(c.label))
+    .slice(0, 2);
+  for (const c of extras) parts.push(c.value);
+  return parts.join(" ").slice(0, 140);
 }
 
 const DRILLDOWN_LIMIT = 5;
@@ -26,15 +26,32 @@ export async function discover(state: RunState, emit: Emit): Promise<void> {
   const query = buildQuery(brief);
   const maxPrice = brief.budget?.max;
 
+  // channels are independent — one failing or returning nothing must not kill the run
   const [shopping, webHits] = await Promise.all([
-    googleShopping(query, { num: 20, maxPrice }).then((r) => {
-      emit({ type: "source_searched", channel: "serpapi", label: `Google Shopping (PL): ${r.length} offers for "${query}"` });
-      return r;
-    }),
-    fcSearch(`${query} sklep`, { limit: 8 }).then((r) => {
-      emit({ type: "source_searched", channel: "firecrawl", label: `Web search: ${r.length} store pages` });
-      return r;
-    }),
+    (async () => {
+      try {
+        let r = await googleShopping(query, { num: 20, maxPrice });
+        if (!r.length && query !== brief.request) {
+          emit({ type: "warning", detail: "empty shopping results", label: `No shopping results for the detailed query — retrying with "${brief.request}"` });
+          r = await googleShopping(brief.request, { num: 20, maxPrice });
+        }
+        emit({ type: "source_searched", channel: "serpapi", label: `Google Shopping (PL): ${r.length} offers` });
+        return r;
+      } catch (err) {
+        emit({ type: "warning", detail: String(err), label: "Google Shopping unavailable — continuing with web search" });
+        return [];
+      }
+    })(),
+    (async () => {
+      try {
+        const r = await fcSearch(`${query} sklep`, { limit: 8 });
+        emit({ type: "source_searched", channel: "firecrawl", label: `Web search: ${r.length} store pages` });
+        return r;
+      } catch (err) {
+        emit({ type: "warning", detail: String(err), label: "Web search unavailable — continuing with Google Shopping" });
+        return [];
+      }
+    })(),
   ]);
 
   // SerpAPI → immersive drill-down for direct merchant offers (top N with tokens)

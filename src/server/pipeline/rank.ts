@@ -76,17 +76,21 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
       unknowns.push("availability");
     }
 
-    // soft criteria
+    // soft criteria — LLM verdicts (when present) override keyword matching
+    const judged = state.fitJudgments?.get(offer.id);
     let preferTotal = 0;
     let preferHit = 0;
     for (const c of brief.criteria) {
       if (/budget|budżet/i.test(c.label)) continue;
-      const match = criterionMatch(c, corpus);
+      const verdict = judged?.get(c.id);
+      const match = verdict === "matched" ? true : verdict === "contradicted" ? false : criterionMatch(c, corpus);
       if (c.kind === "must") {
-        if (match === undefined) unknowns.push(`must:${c.label}`);
+        if (match === false) violations.push({ criterionId: c.id, reason: `does not satisfy "${c.label}: ${c.value}"` });
+        else if (match === undefined) unknowns.push(`must:${c.label}`);
       } else if (c.kind === "prefer") {
         preferTotal += 1;
-        if (match) preferHit += 1;
+        if (match === true) preferHit += 1;
+        else if (match === undefined) preferHit += 0.4; // unverified ≠ absent
       } else if (c.kind === "avoid" && match === true) {
         violations.push({ criterionId: c.id, reason: `matches avoided "${c.value}"` });
       }
@@ -111,7 +115,7 @@ export function assess(state: RunState): Record<string, OfferAssessment> {
       price === undefined || !Number.isFinite(minPrice) || maxPrice === minPrice
         ? 0.5
         : 1 - (price - minPrice) / (maxPrice - minPrice);
-    const preferenceFit = preferTotal ? preferHit / preferTotal : 0.5;
+    const preferenceFit = preferTotal ? Math.min(1, preferHit / preferTotal) : 0.5;
     const uncertaintyPenalty = Math.min(1, unknowns.length / 6);
     const merchantTrustBoost = merchant?.platform === "shopify" ? 0.05 : 0;
 

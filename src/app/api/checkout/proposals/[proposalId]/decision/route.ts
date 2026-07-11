@@ -17,5 +17,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ proposalId: st
   }
   const result = decideProposal({ proposalId, approve: body.approve, rejectionReason: body.rejectionReason });
   if ("error" in result) return NextResponse.json(result, { status: 400 });
+
+  // Resolve the parked Agents-SDK interruption; approval executes the order tool.
+  try {
+    const { resolvePurchaseGate } = await import("../../../../../../server/agents/purchase-gate");
+    const order = await resolvePurchaseGate(result, body.approve);
+    if (order) result.order = { orderId: order.orderId, placedAt: order.placedAt };
+  } catch (err) {
+    return NextResponse.json({ error: `decision recorded but order placement failed: ${String(err)}` }, { status: 500 });
+  }
   return NextResponse.json(result);
 }
