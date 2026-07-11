@@ -1,8 +1,58 @@
-# Purchase Orchestrator
+# gong
+
+An evidence-driven purchasing agent: a natural-language request becomes an explicit purchase brief, gets researched across real shops with provenance, and — after explicit consent — is executed by a purchase orchestrator.
+
+Two components live in this repo:
+
+- **Shopping Advisor** (Next.js, repo root) — elicitation, offer research, standardization, recommendations, consent UI.
+- **Purchase Orchestrator** (`purchase_orchestrator/`, Python) — purchase policies, approvals, and purchase adapters.
+
+---
+
+## Shopping Advisor (Next.js)
+
+
+### What works
+
+- OpenAI Agents SDK category-specific elicitation with Zod-validated output.
+- Warranted-depth question budgeting, choices, and custom answers.
+- Explicit purchase brief with hard requirements and weighted preferences.
+- Fixture and live research through a stable HTTP/SSE contract.
+- Live discovery, standardization, ranking, and merchant deep-dive progress.
+- Three image-led recommendation cards with drill-in standardized product artifacts.
+- Separate product-review and store/seller-review evidence.
+- Per-field provenance, evidence links, confidence/depth, and distinct Not checked vs Checked unresolved states.
+- Same-product offer comparison and a returnable research-event log.
+- Checkout proposal with explicit approve/reject consent; approval creates a persisted mock order confirmation with no real merchant contact or payment transfer.
+
+### Run it
+
+The app uses a deterministic question fixture without an OpenAI key. To exercise the live elicitation provider, export `OPENAI_API_KEY` and optionally `OPENAI_MODEL` before starting.
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000), or the next available port printed by Next.js.
+
+Verification:
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+See [PLAN.md](./PLAN.md) for user-test checkpoints and [COLLABORATION.md](./COLLABORATION.md) for workstream ownership.
+
+---
+
+## Purchase Orchestrator (Python)
 
 Niezalezna usluga API odpowiedzialna za polityki zakupowe, zatwierdzenia klienta i uruchamianie adapterow zakupowych.
 
-## Uruchomienie
+### Uruchomienie
 
 ```powershell
 uv sync --group dev
@@ -11,7 +61,7 @@ uv run uvicorn purchase_orchestrator.main:app --reload
 
 Serwis nasluchuje domyslnie pod `http://127.0.0.1:8000`.
 
-## Kontrakty API
+### Kontrakty API
 
 - `PUT /v1/users/{user_id}/purchase-policy` - polityka autonomii zakupowej.
 - `POST /v1/purchase-requests` - wejscie dla Shopping Advisor.
@@ -21,11 +71,11 @@ Serwis nasluchuje domyslnie pod `http://127.0.0.1:8000`.
 
 Powiadomienia dla ChatUI sa zapisywane w outboxie. Worker dostarczajacy je do aplikacji ChatUI zostanie podlaczony do tego portu w kolejnym kroku.
 
-## Adapter demonstracyjny
+### Adapter demonstracyjny
 
 Aktualnie `DummyPurchaseAdapter` jest uruchamiany od razu po pre-approval albo zatwierdzeniu przez klienta. Nie laczy sie ze sklepem i nie obciaza platnosci; wypisuje potwierdzenie w konsoli, ustawia status `PURCHASED` i publikuje `purchase.completed`.
 
-## Widoczny adapter AI
+### Widoczny adapter AI
 
 Adapter demonstracyjny `AiAssistedBrowserAdapter` uruchamia Playwright w widocznym oknie i korzysta z `OPENAI_API` (lub standardowego `OPENAI_API_KEY`) z pliku `.env`. AI moze wybrac tylko przycisk lub opcje z aktualnej, ograniczonej listy elementow strony. Adapter nie moze kliknac przycisku platnosci ani zlozenia zamowienia.
 
