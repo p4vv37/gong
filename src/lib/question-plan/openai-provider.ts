@@ -33,6 +33,9 @@ Rules:
 
 export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
   async createPlan(input: QuestionPlanRequest) {
+    const timeoutMs = Number(process.env.QUESTION_PLAN_TIMEOUT_MS ?? "45000");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("Question-plan provider timed out")), timeoutMs);
     const agent = new Agent({
       name: "Purchase category researcher",
       instructions,
@@ -50,11 +53,16 @@ export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
       workflowName: "purchase-question-plan",
       traceIncludeSensitiveData: false,
     });
-    const result = await runner.run(
-      agent,
-      `Current date: ${new Date().toISOString().slice(0, 10)}. Create the researched decision plan for this request:\n${JSON.stringify(input, null, 2)}`,
-      { maxTurns: 4 },
-    );
+    let result;
+    try {
+      result = await runner.run(
+        agent,
+        `Current date: ${new Date().toISOString().slice(0, 10)}. Create the researched decision plan for this request:\n${JSON.stringify(input, null, 2)}`,
+        { maxTurns: 4, signal: controller.signal },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!result.finalOutput) {
       throw new Error("The category researcher returned no structured plan.");

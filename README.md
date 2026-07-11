@@ -8,7 +8,7 @@ The Next.js checkout routes are the server-side integration boundary. They trans
 
 ## Full pipeline (safe dummy purchase)
 
-Use Node.js 22+ for the live research connectors. Fixture mode also builds on Node.js 20.
+Use Node.js 22+; `firecrawl@4` requires it. With nvm run `nvm use` from the repository root (the committed `.nvmrc` selects Node 22).
 
 Create `.env.local` from `.env.example`. Keep `PURCHASE_ORCHESTRATOR_URL=http://127.0.0.1:8000`; API keys are optional in fixture mode.
 
@@ -68,6 +68,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000), or the next available port printed by Next.js.
+
+`QUESTION_PLAN_PROVIDER=auto` tries OpenAI whenever `OPENAI_API_KEY` is present and falls back to the deterministic provider after a transient API failure or timeout. For a fast deterministic local UI test set `QUESTION_PLAN_PROVIDER=mock`. Use `QUESTION_PLAN_PROVIDER=openai` when a live-provider failure must be surfaced instead of hidden. Live category planning performs mandatory web research and is bounded by `QUESTION_PLAN_TIMEOUT_MS` (default 45 seconds).
 
 Verification:
 
