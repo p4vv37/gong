@@ -113,7 +113,7 @@ class BrowserConfig:
         return cls(
             headless=os.getenv("BROWSER_HEADLESS", "false").lower() == "true",
             max_steps=int(os.getenv("BROWSER_MAX_STEPS", "16")),
-            model=os.getenv("AI_BROWSER_MODEL", "gpt-5.4-mini"),
+            model=os.getenv("AI_BROWSER_MODEL", "gpt-5.6"),
             screenshot_dir=os.getenv("BROWSER_SCREENSHOT_DIR", "artifacts/browser"),
             browser_channel=os.getenv("BROWSER_CHANNEL", "chrome") or None,
             page_settle_timeout_ms=int(os.getenv("BROWSER_PAGE_SETTLE_TIMEOUT_MS", "6000")),
@@ -183,7 +183,8 @@ class OpenAiBrowserPlanner:
                 "Extract only values explicitly visible in the checkout summary.",
                 "Amounts must be decimal numbers without currency symbols.",
                 "item_amount is the displayed product line amount for one item.",
-                "Use 0 for shipping or tax only when the page explicitly says free, included, or displays zero.",
+                "Use 0 for shipping only when the page explicitly says free or displays zero.",
+                "Use 0 for tax when tax is explicitly included in displayed gross prices or displays zero.",
                 "Copy short exact visible snippets into evidence fields.",
                 "Do not infer missing values and do not use expected purchase data.",
             ],
@@ -236,6 +237,7 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                 self._dismiss_cookie_consent(page)
                 self._wait_for_interactive_state(page, minimum_wait_ms=500)
                 self._run_steps(page, purchase)
+                self._validate_final_checkout(page, purchase)
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[ai-browser] Checkout prepared at {page.url}. Screenshot: {screenshot_path}")
                 return ExecutionReceipt(
@@ -381,6 +383,64 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                 if is_add_to_cart:
                     successful_cart_adds += 1
         raise BrowserRunError("Browser action limit reached before checkout was ready")
+
+    def _validate_final_checkout(self, page: Page, purchase: PurchaseDetails) -> CheckoutSnapshot:
+        """Re-read the merchant summary and compare it with the immutable Advisor offer."""
+        snapshot = self.planner.read_checkout_snapshot(
+            page_url=page.url,
+            visible_text=page.locator("body").inner_text(timeout=5_000),
+        )
+        result = self._validate_checkout_snapshot(snapshot, purchase)
+        if not result.valid:
+            raise CheckoutValidationError("Final checkout validation failed: " + "; ".join(result.reasons))
+        print(
+            "[ai-browser] Final checkout validated: "
+            f"{snapshot.quantity} x {snapshot.item_amount} {snapshot.currency}, "
+            f"shipping {snapshot.shipping_amount}, total {snapshot.total_amount}"
+        )
+        return snapshot
+
+    @staticmethod
+    def _validate_checkout_snapshot(
+        snapshot: CheckoutSnapshot,
+        purchase: PurchaseDetails,
+    ) -> CheckoutValidationResult:
+        offer = purchase.offer
+        reasons: list[str] = []
+
+        def normalized(value: str) -> str:
+            return " ".join(
+                "".join(character if character.isalnum() else " " for character in value.casefold()).split()
+            )
+
+        expected_title = normalized(offer.title)
+        actual_title = normalized(snapshot.product_title)
+        if expected_title not in actual_title and actual_title not in expected_title:
+            reasons.append("product title differs from the Advisor offer")
+        if offer.variant and normalized(offer.variant) not in normalized(snapshot.variant or ""):
+            reasons.append("product variant differs from the Advisor offer")
+        if snapshot.quantity != offer.quantity:
+            reasons.append(f"quantity changed from {offer.quantity} to {snapshot.quantity}")
+        if snapshot.currency.upper() != offer.currency.upper():
+            reasons.append(f"currency changed from {offer.currency} to {snapshot.currency}")
+        if snapshot.item_amount != offer.item_amount:
+            reasons.append(f"item price changed from {offer.item_amount} to {snapshot.item_amount}")
+        if snapshot.shipping_amount != offer.shipping_amount:
+            reasons.append(
+                f"shipping price changed from {offer.shipping_amount} to {snapshot.shipping_amount}"
+            )
+        if snapshot.total_amount != offer.total_amount:
+            reasons.append(f"current total changed from {offer.total_amount} to {snapshot.total_amount}")
+        if snapshot.total_amount > offer.maximum_total_amount:
+            reasons.append(
+                f"current total {snapshot.total_amount} exceeds maximum {offer.maximum_total_amount}"
+            )
+        calculated_total = snapshot.item_amount * snapshot.quantity + snapshot.shipping_amount + snapshot.tax_amount
+        if snapshot.total_amount != calculated_total:
+            reasons.append(
+                f"merchant total {snapshot.total_amount} does not match visible components {calculated_total}"
+            )
+        return CheckoutValidationResult(valid=not reasons, reasons=reasons)
 
     @staticmethod
     def _cookie_consent_priority(text: str) -> int | None:
