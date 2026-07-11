@@ -46,9 +46,17 @@ export type SelectedChat = {
   imgSrc?: string;
 };
 
+export type MessageButtonVariant = "green" | "destructive";
+
+export type MessageArtifactButton = {
+  id: string;
+  content: string;
+  variant?: MessageButtonVariant;
+};
+
 export type MessageArtifact = {
   type: "buttons";
-  buttons: string[];
+  buttons: MessageArtifactButton[];
 };
 
 export type ConversationMessage = {

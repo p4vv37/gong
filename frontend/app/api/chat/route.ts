@@ -29,16 +29,21 @@ export async function POST(request: Request) {
 
   await delay(2_000);
 
-  const lastMessage = body.messages.at(-1)?.content.toLowerCase() ?? "";
-  const response: AgentResponse = lastMessage.includes("options")
-    ? {
-        message: {
-          type: "agent",
-          content: "What would you prefer?",
-          artifacts: [{ type: "buttons", buttons: ["A", "B", "C"] }],
+  const response: AgentResponse = {
+    message: {
+      type: "agent",
+      content: "example response\noption A - explanation\noption B - explanation",
+      artifacts: [
+        {
+          type: "buttons",
+          buttons: [
+            { id: "A", content: "A", variant: "green" },
+            { id: "B", content: "B", variant: "destructive" },
+          ],
         },
-      }
-    : { message: { type: "agent", content: "example response" } };
+      ],
+    },
+  };
 
   return Response.json(response);
 }

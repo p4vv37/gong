@@ -10,6 +10,7 @@ import {
   SendIcon,
   StickerIcon,
 } from "@/components/ios-icons";
+import { MessageActionButtons } from "@/components/message-action-buttons";
 
 function formatMessageTime(sentAt: string) {
   const date = new Date(sentAt);
@@ -63,6 +64,7 @@ export function ChatBody({
   onArtifactButton: (label: string) => void;
 }) {
   const conversationEnd = useRef<HTMLDivElement>(null);
+  const [answeredArtifactMessages, setAnsweredArtifactMessages] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     conversationEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -78,6 +80,7 @@ export function ChatBody({
       {messages.map((message, index) => {
         const isUser = message.type === "user";
         const grouped = messages[index - 1]?.type === message.type;
+        const hasArtifacts = Boolean(message.artifacts?.length) && !answeredArtifactMessages.has(message.id);
         const rowSide = isUser ? "ios-message-row-user" : "ios-message-row-agent";
         const bubbleSide = isUser ? "ios-message-user" : "ios-message-agent";
 
@@ -86,22 +89,42 @@ export function ChatBody({
             key={message.id}
             className={`ios-message-row ${rowSide}${grouped ? " ios-message-row-grouped" : ""}`}
           >
-            <article className={`ios-message-bubble ${bubbleSide}${grouped ? " ios-message-grouped" : ""}`}>
-              <p>{message.content}</p>
-              {message.artifacts?.map((artifact, artifactIndex) =>
-                artifact.type === "buttons" ? (
-                  <div className="ios-message-buttons" key={`${message.id}-${artifactIndex}`}>
-                    {artifact.buttons.map((label) => (
-                      <button type="button" key={label} onClick={() => onArtifactButton(label)}>{label}</button>
-                    ))}
-                  </div>
-                ) : null,
-              )}
-              <span className="ios-message-meta">
-                <time dateTime={message.sentAt}>{formatMessageTime(message.sentAt)}</time>
-                {isUser ? <CheckmarksIcon color="#53bdeb" /> : null}
-              </span>
-            </article>
+            <div
+              className={`ios-message-stack${hasArtifacts ? " ios-message-stack-with-artifacts" : ""}`}
+              style={hasArtifacts ? { width: "min(80%, 460px)" } : undefined}
+            >
+              <article className={`ios-message-bubble ${bubbleSide}${grouped ? " ios-message-grouped" : ""}`}>
+                <div className="ios-message-content">
+                  {message.content.split(/\r?\n/).map((line, lineIndex) => (
+                    <p key={`${message.id}-line-${lineIndex}`}>
+                      {line || "\u00a0"}
+                    </p>
+                  ))}
+                </div>
+                <span className="ios-message-meta">
+                  <time dateTime={message.sentAt}>{formatMessageTime(message.sentAt)}</time>
+                  {isUser ? <CheckmarksIcon color="#53bdeb" /> : null}
+                </span>
+              </article>
+              {hasArtifacts
+                ? message.artifacts?.map((artifact, artifactIndex) =>
+                    artifact.type === "buttons" ? (
+                      <MessageActionButtons
+                        key={`${message.id}-${artifactIndex}`}
+                        buttons={artifact.buttons}
+                        onSelect={(button) => {
+                          setAnsweredArtifactMessages((answeredMessages) => {
+                            const nextAnsweredMessages = new Set(answeredMessages);
+                            nextAnsweredMessages.add(message.id);
+                            return nextAnsweredMessages;
+                          });
+                          onArtifactButton(button.content);
+                        }}
+                      />
+                    ) : null,
+                  )
+                : null}
+            </div>
           </div>
         );
       })}
