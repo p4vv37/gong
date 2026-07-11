@@ -2,57 +2,57 @@
 
 The implementation is a code-controlled workflow. Agents produce typed decisions and evidence; application code owns state transitions, concurrency, eligibility, and scoring.
 
+Research-pipeline implementation belongs to Claude under `COLLABORATION.md`. Codex owns the conversation and all user-facing UI, consuming research only through `src/contract` and the documented HTTP routes.
+
 ## Checkpoint 1 — purchase-brief conversation
 
-Status: implemented.
+Status: completed.
 
-Test when: the app starts locally without API keys.
+Acceptance: natural-language intent becomes an explicit brief with `must`, `prefer`, `avoid`, `indifferent`, and `delegate` semantics. Warranted depth controls question cost.
+
+## Checkpoint 2 — OpenAI category elicitation
+
+Status: completed and user-accepted.
 
 User test:
 
-1. Enter a clothing request with or without a budget.
-2. Change warranted depth and observe the number of decisions.
-3. Answer using choices and custom text.
-4. Confirm that requirements, preferences, review sensitivity, and seller risk appear in the live brief.
+1. Enter a request in any consumer category.
+2. Compare low and high warranted-depth plans.
+3. Answer with both choices and custom text.
+4. Refresh and confirm the brief persists.
 
-Acceptance: no transcript-only state; the brief is explicit and the domain tests pass.
+Acceptance: the OpenAI Agents SDK returns Zod-valid, product-specific decision plans; a deterministic keyless provider uses the same contract.
 
-## Checkpoint 2 — OpenAI conversation provider
+## Checkpoint 3 — research progress
 
-Test when: structured agent output, session continuation, and a deterministic mock fallback work.
+Status: implemented; awaiting user acceptance.
 
-User test: compare an agent-researched question plan with the local clothing fixture, then continue the conversation across page refreshes.
+User test:
 
-Acceptance: Zod validates all model output; provider failures never corrupt the stored brief; tracing excludes unnecessary sensitive content.
+1. Complete a purchase brief.
+2. Start product research in fixture mode.
+3. Watch discovery, standardization, ranking, and parallel deep-dive labels arrive live.
+4. Confirm recoverable warnings remain visible without failing the run.
 
-## Checkpoint 3 — offers, reviews, evidence, and ranking
+Acceptance: the UI starts `POST /api/research`, consumes the SSE route, renders only `ProgressEvent.label`, and transitions on the terminal event.
 
-Test when: recorded product fixtures can be loaded and ranked without web access.
+## Checkpoint 4 — recommendations and checkout consent
 
-User test: change hard constraints and review/risk preferences, then inspect eligibility and score explanations.
+Status: implemented; awaiting user acceptance.
 
-Acceptance: product reviews and store/seller reviews are separate evidence streams; missing facts remain unknown; every recommendation claim has provenance.
+User test:
 
-## Checkpoint 4 — Firecrawl breadth research
+1. Inspect Best overall, Best value, and Lowest risk cards.
+2. Verify product reviews and store/seller reviews are separate.
+3. Confirm confidence-zero policy facts say Unverified.
+4. Prepare a checkout proposal, inspect totals and unknowns, then test both approval and rejection.
 
-Test when: one category and market can discover and normalize live offers, with recorded fixtures for repeatability.
+Acceptance: offer claims, trade-offs, review evidence, policy depth, confidence, and unknowns remain distinct. Approval records consent but explicitly does not place an order or payment.
 
-User test: run a request against the live provider and compare the resulting offers with their source pages.
+## Checkpoint 5 — resilience and end-to-end quality
 
-Acceptance: discovery, scraping, normalization, deduplication, caching, and rate limits are observable.
+Status: pending.
 
-## Checkpoint 5 — Cloudflare parallel deep dives
+User test: complete conversation → fixture research → recommendations → consent on desktop and mobile, including interrupted streams and failed providers.
 
-Test when: shortlisted offers can independently inspect dynamic pages, product reviews, store/seller reviews, and merchant policies.
-
-User test: launch a shortlist and watch parallel tasks finish with confidence, freshness, conflicts, and unknowns.
-
-Acceptance: the browser is an escalation path; no CAPTCHA bypass; cart-level actions are read-only and approval-gated.
-
-## Checkpoint 6 — complete recommendation flow
-
-Test when: request → questions → discovery → shortlist → deep dive → recommendations runs end to end.
-
-User test: complete at least three category scenarios at different depth settings.
-
-Acceptance: recommendations distinguish best match, best value, and lowest risk; failures are recoverable; latency and provider cost are visible.
+Acceptance: accessible interactive states, resumable completed results, useful failures, responsive layout, and automated browser coverage.

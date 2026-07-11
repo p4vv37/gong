@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { API, type RecommendationSet } from "@/contract/http";
+import type { ProgressEvent } from "@/contract/events";
 import {
   applyQuestionAnswer,
   createPurchaseBrief,
@@ -9,6 +11,8 @@ import {
   type QuestionChoice,
 } from "@/domain/purchase-brief";
 import { decisionQuestionSchema, questionPlanSchema } from "@/lib/question-plan/schema";
+import { RecommendationResults } from "./recommendation-results";
+import { ResearchProgress } from "./research-progress";
 
 const exampleRequest = "A warm everyday winter jacket under 900 PLN, not too sporty, for Warsaw weather";
 
@@ -27,6 +31,11 @@ export function PurchaseWorkbench() {
   const [planning, setPlanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customAnswer, setCustomAnswer] = useState("");
+  const [view, setView] = useState<"conversation" | "research" | "results">("conversation");
+  const [runId, setRunId] = useState<string | null>(null);
+  const [progressEvents, setProgressEvents] = useState<ProgressEvent[]>([]);
+  const [researchResult, setResearchResult] = useState<RecommendationSet | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
   const currentQuestion = brief ? questions[brief.answeredQuestionIds.length] : undefined;
 
   useEffect(() => {
@@ -65,6 +74,39 @@ export function PurchaseWorkbench() {
       JSON.stringify({ request, depth, brief, questions, provider }),
     );
   }, [brief, depth, provider, questions, request]);
+
+  useEffect(() => {
+    if (!runId || view !== "research") return;
+    const source = new EventSource(API.researchEvents(runId));
+    let terminal = false;
+
+    source.onmessage = (message) => {
+      try {
+        const event = JSON.parse(message.data) as ProgressEvent;
+        if (!event?.type || !event.label) return;
+        setProgressEvents((current) => [...current, event]);
+
+        if (event.type === "run_completed") {
+          terminal = true;
+          source.close();
+          setResearchResult(event.result);
+          setView("results");
+        } else if (event.type === "run_failed") {
+          terminal = true;
+          source.close();
+          setResearchError(event.detail);
+        }
+      } catch {
+        setResearchError("A malformed research progress event was ignored.");
+      }
+    };
+
+    source.onerror = () => {
+      if (!terminal) setResearchError("Progress connection interrupted. Reconnecting…");
+    };
+
+    return () => source.close();
+  }, [runId, view]);
 
   async function startResearch(event: FormEvent) {
     event.preventDefault();
@@ -105,6 +147,38 @@ export function PurchaseWorkbench() {
     setQuestions([]);
     setError(null);
     setCustomAnswer("");
+    setView("conversation");
+    setRunId(null);
+    setProgressEvents([]);
+    setResearchResult(null);
+    setResearchError(null);
+  }
+
+  async function beginProductResearch() {
+    if (!brief?.readyForSearch) return;
+    setView("research");
+    setProgressEvents([]);
+    setResearchError(null);
+    setResearchResult(null);
+
+    try {
+      const response = await fetch(API.startResearch, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief, mode: "fixture" }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.runId) throw new Error(payload.error ?? "Research could not be started");
+      setRunId(payload.runId);
+    } catch (cause) {
+      setResearchError(cause instanceof Error ? cause.message : "Research could not be started");
+    }
+  }
+
+  function cancelResearch() {
+    setRunId(null);
+    setView("conversation");
+    setResearchError(null);
   }
 
   return (
@@ -118,21 +192,27 @@ export function PurchaseWorkbench() {
               <p className="text-xs text-[var(--muted)]">purchase intelligence</p>
             </div>
           </div>
-          <div className="status-pill"><span /> {brief && provider === "openai" ? "OpenAI agent" : "Local prototype"}</div>
+          <div className="status-pill"><span /> {view === "research" ? "Researching" : view === "results" ? "Recommendations ready" : brief && provider === "openai" ? "OpenAI agent" : "Local prototype"}</div>
         </header>
 
-        <section className="hero-grid">
-          <div>
-            <p className="eyebrow">A decision interface, not another search box</p>
-            <h1>Tell us what good looks like.<br /><em>We&apos;ll resolve the rest.</em></h1>
-          </div>
-          <p className="hero-copy">
-            The agent researches what matters for this product, asks only warranted questions,
-            then investigates products, sellers, policies and reviews with evidence attached.
-          </p>
-        </section>
+        {view === "conversation" ? (
+          <section className="hero-grid">
+            <div>
+              <p className="eyebrow">A decision interface, not another search box</p>
+              <h1>Tell us what good looks like.<br /><em>We&apos;ll resolve the rest.</em></h1>
+            </div>
+            <p className="hero-copy">
+              The agent researches what matters for this product, asks only warranted questions,
+              then investigates products, sellers, policies and reviews with evidence attached.
+            </p>
+          </section>
+        ) : null}
 
-        {!brief ? (
+        {view === "research" ? (
+          <ResearchProgress events={progressEvents} error={researchError} onCancel={cancelResearch} />
+        ) : view === "results" && researchResult ? (
+          <RecommendationResults result={researchResult} onNewRequest={reset} />
+        ) : !brief ? (
           <form className="request-card" onSubmit={startResearch}>
             <label htmlFor="request">What are you looking for?</label>
             <textarea
@@ -208,7 +288,8 @@ export function PurchaseWorkbench() {
                   <p className="eyebrow">Decision mapped</p>
                   <h2>Ready to search with intent.</h2>
                   <p>{provider === "openai" ? "The OpenAI category agent produced this plan. Product search is the next stage." : "The deterministic fixture produced this plan. Add an OpenAI key to test live category reasoning."}</p>
-                  <button className="primary-button" type="button" disabled>Start product research <span>→</span></button>
+                  {researchError ? <p className="form-error" role="alert">{researchError}</p> : null}
+                  <button className="primary-button" type="button" onClick={beginProductResearch}>Start product research <span>→</span></button>
                 </div>
               )}
             </section>
@@ -241,8 +322,8 @@ export function PurchaseWorkbench() {
         )}
 
         <footer>
-          <span>Checkpoint 01</span>
-          <p>{provider === "openai" ? "Structured OpenAI plan" : "Deterministic clothing demo"} · nothing is purchased</p>
+          <span>{view === "results" ? "Checkpoint 04" : view === "research" ? "Checkpoint 03" : "Checkpoint 02"}</span>
+          <p>{view === "results" ? "Evidence and consent UI" : view === "research" ? "Fixture research replay" : provider === "openai" ? "Structured OpenAI plan" : "Deterministic clothing demo"} · nothing is purchased</p>
         </footer>
       </div>
     </main>
