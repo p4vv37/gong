@@ -34,7 +34,21 @@ class ResilientQuestionPlanProvider implements QuestionPlanProvider {
   }
 }
 
+/**
+ * QUESTION_PLAN_PROVIDER selects the elicitation source:
+ * - "auto" (default): live research with a hard deadline, degrading to the
+ *   deterministic mock plan on timeout/failure — never hangs, never throws
+ * - "openai": live only, no mock fallback (fails loudly)
+ * - "mock": deterministic fixture questions, no network
+ */
 export function getQuestionPlanProvider(): QuestionPlanProvider {
+  const configured = (process.env.QUESTION_PLAN_PROVIDER ?? "auto").toLowerCase();
+  if (configured === "mock") return new MockQuestionPlanProvider();
+  if (configured === "openai") {
+    if (!process.env.OPENAI_API_KEY) throw new Error("QUESTION_PLAN_PROVIDER=openai requires OPENAI_API_KEY");
+    return new OpenAIQuestionPlanProvider();
+  }
+  if (configured !== "auto") throw new Error("QUESTION_PLAN_PROVIDER must be auto, mock, or openai");
   if (process.env.OPENAI_API_KEY) return new ResilientQuestionPlanProvider();
   return new MockQuestionPlanProvider();
 }

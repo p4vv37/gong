@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import hashlib
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -103,7 +104,7 @@ class BrowserAssetResolver:
 class BrowserConfig:
     headless: bool = False
     max_steps: int = 16
-    model: str = "gpt-5.4-mini"
+    model: str = "gpt-5.6"
     screenshot_dir: str = "artifacts/browser"
     browser_channel: str | None = "chrome"
     page_settle_timeout_ms: int = 6_000
@@ -113,7 +114,7 @@ class BrowserConfig:
         return cls(
             headless=os.getenv("BROWSER_HEADLESS", "false").lower() == "true",
             max_steps=int(os.getenv("BROWSER_MAX_STEPS", "16")),
-            model=os.getenv("AI_BROWSER_MODEL", "gpt-5.4-mini"),
+            model=os.getenv("AI_BROWSER_MODEL", "gpt-5.6"),
             screenshot_dir=os.getenv("BROWSER_SCREENSHOT_DIR", "artifacts/browser"),
             browser_channel=os.getenv("BROWSER_CHANNEL", "chrome") or None,
             page_settle_timeout_ms=int(os.getenv("BROWSER_PAGE_SETTLE_TIMEOUT_MS", "6000")),
@@ -183,7 +184,8 @@ class OpenAiBrowserPlanner:
                 "Extract only values explicitly visible in the checkout summary.",
                 "Amounts must be decimal numbers without currency symbols.",
                 "item_amount is the displayed product line amount for one item.",
-                "Use 0 for shipping or tax only when the page explicitly says free, included, or displays zero.",
+                "Use 0 for shipping only when the page explicitly says free or displays zero.",
+                "Use 0 for tax when tax is explicitly included in displayed gross prices or displays zero.",
                 "Copy short exact visible snippets into evidence fields.",
                 "Do not infer missing values and do not use expected purchase data.",
             ],
@@ -233,7 +235,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             try:
                 page.goto(str(purchase.offer.product_url), wait_until="domcontentloaded", timeout=45_000)
                 self._wait_for_interactive_state(page, minimum_wait_ms=5_000)
+                self._dismiss_cookie_consent(page)
+                self._wait_for_interactive_state(page, minimum_wait_ms=500)
                 self._run_steps(page, purchase)
+                self._validate_final_checkout(page, purchase)
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[ai-browser] Checkout prepared at {page.url}. Screenshot: {screenshot_path}")
                 return ExecutionReceipt(
@@ -286,6 +291,15 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         }
         rejected_stop_attempts = 0
         for step in range(self.config.max_steps):
+            # Cookie widgets are site infrastructure, not part of the purchase plan. Handle
+            # them deterministically so the planner cannot get trapped expanding/scrolling
+            # inside a consent modal instead of closing it.
+            self._dismiss_cookie_consent(page)
+            self._dismiss_nonessential_overlays(page)
+            self._complete_street_number_modal(page, approved_values)
+            if successful_cart_adds:
+                self._continue_from_cart_modal(page)
+                self._dismiss_nonessential_overlays(page)
             if self._is_payment_or_final_order_page(page):
                 print("[ai-browser] Reached checkout boundary; waiting for user action.")
                 return
@@ -376,6 +390,203 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                     successful_cart_adds += 1
         raise BrowserRunError("Browser action limit reached before checkout was ready")
 
+    def _validate_final_checkout(self, page: Page, purchase: PurchaseDetails) -> CheckoutSnapshot:
+        """Re-read the merchant summary and compare it with the immutable Advisor offer."""
+        snapshot = self.planner.read_checkout_snapshot(
+            page_url=page.url,
+            visible_text=page.locator("body").inner_text(timeout=5_000),
+        )
+        result = self._validate_checkout_snapshot(snapshot, purchase)
+        if not result.valid:
+            raise CheckoutValidationError("Final checkout validation failed: " + "; ".join(result.reasons))
+        print(
+            "[ai-browser] Final checkout validated: "
+            f"{snapshot.quantity} x {snapshot.item_amount} {snapshot.currency}, "
+            f"shipping {snapshot.shipping_amount}, total {snapshot.total_amount}"
+        )
+        return snapshot
+
+    @staticmethod
+    def _validate_checkout_snapshot(
+        snapshot: CheckoutSnapshot,
+        purchase: PurchaseDetails,
+    ) -> CheckoutValidationResult:
+        offer = purchase.offer
+        reasons: list[str] = []
+
+        def normalized(value: str) -> str:
+            return " ".join(
+                "".join(character if character.isalnum() else " " for character in value.casefold()).split()
+            )
+
+        expected_title = normalized(offer.title)
+        actual_title = normalized(snapshot.product_title)
+        if expected_title not in actual_title and actual_title not in expected_title:
+            reasons.append("product title differs from the Advisor offer")
+        if offer.variant and normalized(offer.variant) not in normalized(snapshot.variant or ""):
+            reasons.append("product variant differs from the Advisor offer")
+        if snapshot.quantity != offer.quantity:
+            reasons.append(f"quantity changed from {offer.quantity} to {snapshot.quantity}")
+        if snapshot.currency.upper() != offer.currency.upper():
+            reasons.append(f"currency changed from {offer.currency} to {snapshot.currency}")
+        if snapshot.item_amount != offer.item_amount:
+            reasons.append(f"item price changed from {offer.item_amount} to {snapshot.item_amount}")
+        if snapshot.shipping_amount != offer.shipping_amount:
+            reasons.append(
+                f"shipping price changed from {offer.shipping_amount} to {snapshot.shipping_amount}"
+            )
+        if snapshot.total_amount != offer.total_amount:
+            reasons.append(f"current total changed from {offer.total_amount} to {snapshot.total_amount}")
+        if snapshot.total_amount > offer.maximum_total_amount:
+            reasons.append(
+                f"current total {snapshot.total_amount} exceeds maximum {offer.maximum_total_amount}"
+            )
+        calculated_total = snapshot.item_amount * snapshot.quantity + snapshot.shipping_amount + snapshot.tax_amount
+        if snapshot.total_amount != calculated_total:
+            reasons.append(
+                f"merchant total {snapshot.total_amount} does not match visible components {calculated_total}"
+            )
+        return CheckoutValidationResult(valid=not reasons, reasons=reasons)
+
+    @staticmethod
+    def _is_cart_modal_continue_label(text: str) -> bool:
+        normalized = " ".join(text.casefold().split())
+        return normalized in {
+            "przejdź do koszyka",
+            "realizuj zakup",
+            "zobacz koszyk",
+            "go to cart",
+            "view cart",
+            "proceed to checkout",
+            "checkout",
+        }
+
+    def _continue_from_cart_modal(self, page: Page) -> bool:
+        """Use the cart/checkout action inside a visible add-to-cart confirmation modal."""
+        modal = page.locator('[role="dialog"], #modal.--added, .modal.--added').filter(visible=True)
+        if not modal.count():
+            return False
+        controls = modal.locator('button, a, [role="button"]')
+        for index in range(controls.count()):
+            control = controls.nth(index)
+            try:
+                label = control.inner_text(timeout=500).strip()
+                if control.is_visible() and self._is_cart_modal_continue_label(label):
+                    control.click(timeout=5_000)
+                    print(f"[ai-browser] Continued from cart modal via: {label}")
+                    self._wait_for_interactive_state(page, minimum_wait_ms=1_000)
+                    return True
+            except PlaywrightError:
+                continue
+        return False
+
+    @staticmethod
+    def _dismiss_nonessential_overlays(page: Page) -> bool:
+        """Close marketing and postcode interruptions without accepting or submitting data."""
+        dismissed = False
+        try:
+            marketing = page.locator(
+                '#edrone--main--custom-popup--container, iframe[title="Edrone Onsite Popup"]'
+            )
+            if marketing.filter(visible=True).count():
+                marketing.evaluate_all("elements => elements.forEach(element => element.remove())")
+                dismissed = True
+        except PlaywrightError:
+            pass
+
+        for _ in range(3):
+            try:
+                postcode_visible = page.locator('#modal.--zipcode').filter(visible=True).count()
+            except PlaywrightError:
+                postcode_visible = 0
+            if not postcode_visible:
+                break
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            dismissed = True
+        if dismissed:
+            print("[ai-browser] Dismissed a non-checkout overlay")
+        return dismissed
+
+    @staticmethod
+    def _complete_street_number_modal(page: Page, approved_values: dict[str, str]) -> bool:
+        """Complete a split house-number prompt using only the Advisor address_line1 value."""
+        house_number = approved_values.get("delivery.house_number")
+        if not house_number:
+            return False
+        modal = page.locator('#modal.--street-number').filter(visible=True)
+        if not modal.count():
+            return False
+        field = modal.locator('input').filter(visible=True).first
+        if not field.count():
+            return False
+        field.fill(house_number)
+        controls = modal.locator('button, a, [role="button"]').filter(visible=True)
+        for index in range(controls.count()):
+            control = controls.nth(index)
+            label = control.inner_text(timeout=500).strip().casefold()
+            if label in {"zapisz", "potwierdź", "dalej", "save", "confirm"}:
+                control.click(timeout=5_000)
+                print("[ai-browser] Completed house number from Advisor address_line1")
+                page.wait_for_timeout(500)
+                return True
+        return False
+
+    @staticmethod
+    def _cookie_consent_priority(text: str) -> int | None:
+        """Prefer the least permissive consent choice and ignore preference accordions."""
+        normalized = " ".join(text.casefold().split())
+        choices = (
+            (
+                0,
+                (
+                    "potwierdzam wymagane",
+                    "tylko wymagane",
+                    "tylko niezbędne",
+                    "odrzuć wszystkie",
+                    "odrzuć",
+                    "nie zgadzam się",
+                    "reject all",
+                    "decline all",
+                    "necessary only",
+                    "essential only",
+                ),
+            ),
+            (1, ("potwierdzam wszystkie", "akceptuję wszystkie", "accept all", "allow all")),
+        )
+        for priority, labels in choices:
+            if normalized in labels:
+                return priority
+        return None
+
+    def _dismiss_cookie_consent(self, page: Page) -> bool:
+        """Close a visible consent overlay, including banners hosted in an iframe."""
+        matches: list[tuple[int, object, str]] = []
+        for frame in page.frames:
+            try:
+                buttons = frame.get_by_role("button").all()
+            except PlaywrightError:
+                continue
+            for button in buttons:
+                try:
+                    if not button.is_visible():
+                        continue
+                    label = button.inner_text(timeout=500).strip()
+                except PlaywrightError:
+                    continue
+                priority = self._cookie_consent_priority(label)
+                if priority is not None:
+                    matches.append((priority, button, label))
+
+        for _, button, label in sorted(matches, key=lambda match: match[0]):
+            try:
+                button.click(timeout=3_000)
+                print(f"[ai-browser] Cookie consent dismissed via: {label}")
+                return True
+            except PlaywrightError:
+                continue
+        return False
+
     @staticmethod
     def _capture_baseline(page: Page, action: BrowserAction) -> dict[str, str]:
         body_text = page.locator("body").inner_text(timeout=5_000)
@@ -438,6 +649,9 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
         while elapsed_ms < self.config.page_settle_timeout_ms:
             page.wait_for_timeout(poll_ms)
             elapsed_ms += poll_ms
+            # Consent widgets often arrive asynchronously. Dismiss them during settling
+            # instead of leaving the overlay visible for the full initial wait.
+            self._dismiss_cookie_consent(page)
             try:
                 signature = tuple(
                     page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']")
@@ -484,6 +698,10 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
             "delivery.country_code": address.country_code,
             "product.quantity": str(purchase.offer.quantity),
         }
+        address_match = re.fullmatch(r"(.+?)\s+([\w-]*\d[\w/-]*)", address.address_line1.strip())
+        if address_match:
+            values["delivery.street_name"] = address_match.group(1)
+            values["delivery.house_number"] = address_match.group(2)
         if address.address_line2:
             values["delivery.address_line2"] = address.address_line2
         if purchase.checkout.customer_note:
@@ -499,7 +717,9 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
     @staticmethod
     def _annotate_candidates(page: Page) -> list[dict]:
         return page.locator("button, a, input, textarea, select, [role='button'], [role='checkbox']").evaluate_all(
-            """elements => elements
+            """elements => {
+                elements.forEach(element => element.removeAttribute('data-ai-adapter-candidate'));
+                return elements
                 .filter(element => element.offsetParent !== null && !element.disabled)
                 .slice(0, 100)
                 .map((element, index) => {
@@ -520,7 +740,8 @@ class AiAssistedBrowserAdapter(PurchaseAdapter):
                             ? Array.from(element.options).slice(0, 30).map(option => ({value: option.value, text: option.text.trim()}))
                             : []
                     };
-                })"""
+                });
+            }"""
         )
 
     def _perform_action(

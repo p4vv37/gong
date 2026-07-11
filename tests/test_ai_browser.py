@@ -5,7 +5,13 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from purchase_orchestrator.ai_browser import AiAssistedBrowserAdapter, BrowserAction, BrowserAssetResolver, BrowserRunError
+from purchase_orchestrator.ai_browser import (
+    AiAssistedBrowserAdapter,
+    BrowserAction,
+    BrowserAssetResolver,
+    BrowserRunError,
+    CheckoutSnapshot,
+)
 from purchase_orchestrator.models import PurchaseDetails, PurchaseStatus
 
 
@@ -31,6 +37,8 @@ def test_only_advisor_values_are_available_for_form_fill() -> None:
     assert values["delivery.city"] == "Warszawa"
     assert values["delivery.first_name"] == "Jan"
     assert values["delivery.last_name"] == "Testowy"
+    assert values["delivery.street_name"] == "Testowa"
+    assert values["delivery.house_number"] == "1"
     assert values["personalization.dedykacja"] == "Mock testowy — nie realizować"
     assert "payment.card_number" not in values
 
@@ -90,3 +98,89 @@ def test_irreversible_controls_are_blocked(text: str) -> None:
 )
 def test_add_to_cart_controls_are_recognized_for_quantity_guard(candidate: dict) -> None:
     assert AiAssistedBrowserAdapter._is_add_to_cart_candidate(candidate)
+
+
+@pytest.mark.parametrize(
+    ("label", "priority"),
+    [
+        ("Potwierdzam wymagane", 0),
+        ("  Tylko niezbędne  ", 0),
+        ("Reject all", 0),
+        ("Potwierdzam wszystkie", 1),
+    ],
+)
+def test_cookie_consent_choices_are_ranked_privacy_first(label: str, priority: int) -> None:
+    assert AiAssistedBrowserAdapter._cookie_consent_priority(label) == priority
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Analityczne pliki cookie",
+        "Reklamowe pliki cookie",
+        "Polityka prywatności",
+        "Ustawienia cookies",
+    ],
+)
+def test_cookie_preference_controls_are_not_treated_as_confirmation(label: str) -> None:
+    assert AiAssistedBrowserAdapter._cookie_consent_priority(label) is None
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Przejdź do koszyka", "Realizuj zakup", "View cart", "Proceed to checkout"],
+)
+def test_cart_confirmation_continue_controls_are_recognized(label: str) -> None:
+    assert AiAssistedBrowserAdapter._is_cart_modal_continue_label(label)
+
+
+@pytest.mark.parametrize("label", ["Kontynuuj zakupy", "Dodaj do koszyka", "Kup teraz"])
+def test_cart_confirmation_does_not_repeat_or_finish_purchase(label: str) -> None:
+    assert not AiAssistedBrowserAdapter._is_cart_modal_continue_label(label)
+
+
+def checkout_snapshot(purchase: PurchaseDetails, **changes) -> CheckoutSnapshot:
+    values = {
+        "product_title": purchase.offer.title,
+        "variant": purchase.offer.variant,
+        "quantity": purchase.offer.quantity,
+        "item_amount": purchase.offer.item_amount,
+        "shipping_amount": purchase.offer.shipping_amount,
+        "tax_amount": purchase.offer.tax_amount,
+        "total_amount": purchase.offer.total_amount,
+        "currency": purchase.offer.currency,
+        "product_evidence": purchase.offer.title,
+        "quantity_evidence": f"Ilość: {purchase.offer.quantity}",
+        "total_evidence": f"Razem {purchase.offer.total_amount} zł",
+    }
+    values.update(changes)
+    return CheckoutSnapshot.model_validate(values)
+
+
+def test_final_checkout_accepts_unchanged_advisor_offer() -> None:
+    purchase = purchase_details()
+    snapshot = checkout_snapshot(purchase)
+
+    result = AiAssistedBrowserAdapter._validate_checkout_snapshot(snapshot, purchase)
+
+    assert result.valid
+    assert result.reasons == []
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_reason"),
+    [
+        ({"quantity": 2, "total_amount": "298.00"}, "quantity changed"),
+        ({"item_amount": "159.00", "total_amount": "159.00"}, "item price changed"),
+        ({"shipping_amount": "15.00", "total_amount": "164.00"}, "shipping price changed"),
+        ({"total_amount": "201.00", "tax_amount": "52.00"}, "exceeds maximum"),
+    ],
+)
+def test_final_checkout_rejects_boundary_changes(change: dict, expected_reason: str) -> None:
+    purchase = purchase_details()
+    snapshot = checkout_snapshot(purchase, **change)
+
+    result = AiAssistedBrowserAdapter._validate_checkout_snapshot(snapshot, purchase)
+
+    assert not result.valid
+    assert any(expected_reason in reason for reason in result.reasons)
