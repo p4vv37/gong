@@ -29,3 +29,5 @@ replay_pid*
 __pycache__/
 *.py[cod]
 data/
+.env
+artifacts/

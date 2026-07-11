@@ -21,6 +21,7 @@ class PurchaseStatus(StrEnum):
     REJECTED = "REJECTED"
     EXECUTION_QUEUED = "EXECUTION_QUEUED"
     EXECUTING = "EXECUTING"
+    USER_ACTION_REQUIRED = "USER_ACTION_REQUIRED"
     PURCHASED = "PURCHASED"
     FAILED = "FAILED"
 
@@ -60,6 +61,7 @@ class Offer(BaseModel):
     shipping_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
     tax_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
     total_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
+    maximum_total_amount: Decimal = Field(ge=Decimal("0"), decimal_places=2)
     currency: str = Field(min_length=3, max_length=3)
     is_subscription: bool = False
 
@@ -76,6 +78,43 @@ class Offer(BaseModel):
         return self
 
 
+class DeliveryAddress(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipient_name: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=3, max_length=320)
+    phone: str = Field(min_length=3, max_length=50)
+    address_line1: str = Field(min_length=1, max_length=255)
+    address_line2: str | None = Field(default=None, max_length=255)
+    postal_code: str = Field(min_length=1, max_length=32)
+    city: str = Field(min_length=1, max_length=120)
+    country_code: str = Field(min_length=2, max_length=2)
+
+    @field_validator("country_code")
+    @classmethod
+    def normalize_country_code(cls, value: str) -> str:
+        return value.upper()
+
+
+class ProductConfiguration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    options: dict[str, str] = Field(default_factory=dict)
+    personalization: dict[str, str] = Field(default_factory=dict)
+    upload_asset_ids: list[str] = Field(default_factory=list)
+
+
+class CheckoutInstructions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    delivery_address: DeliveryAddress
+    product_configuration: ProductConfiguration = Field(default_factory=ProductConfiguration)
+    preferred_shipping_method: str | None = Field(default=None, max_length=255)
+    preferred_payment_method: str | None = Field(default=None, max_length=255)
+    customer_note: str | None = Field(default=None, max_length=1000)
+    accept_terms: bool = False
+
+
 class PurchaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -84,6 +123,7 @@ class PurchaseRequest(BaseModel):
     conversation_id: UUID
     delivery_address_id: UUID
     offer: Offer
+    checkout: CheckoutInstructions
 
 
 class ApprovalDecision(BaseModel):
@@ -103,6 +143,7 @@ class PurchaseDetails(PurchaseResponse):
     user_id: UUID
     conversation_id: UUID
     offer: Offer
+    checkout: CheckoutInstructions
     rejection_reason: str | None = None
 
 
@@ -112,4 +153,3 @@ class OutboxEvent(BaseModel):
     aggregate_id: UUID
     payload: dict[str, Any]
     created_at: datetime
-

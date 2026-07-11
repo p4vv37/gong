@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, status
 
 from .models import ApprovalDecision, OutboxEvent, PurchaseDetails, PurchasePolicyInput, PurchaseRequest, PurchaseResponse
+from .executor import DummyPurchaseAdapter, PurchaseExecutor
 from .repository import Repository
 from .service import PurchaseService
 
@@ -16,7 +17,14 @@ app = FastAPI(title="Purchase Orchestrator", version="0.1.0")
 @lru_cache
 def get_service() -> PurchaseService:
     database_path = os.getenv("PURCHASE_ORCHESTRATOR_DB", "data/purchase-orchestrator.db")
-    return PurchaseService(Repository(database_path))
+    adapter_name = os.getenv("PURCHASE_ADAPTER", "dummy")
+    if adapter_name == "ai_browser":
+        from .ai_browser import AiAssistedBrowserAdapter
+
+        executor = PurchaseExecutor(AiAssistedBrowserAdapter())
+    else:
+        executor = PurchaseExecutor(DummyPurchaseAdapter())
+    return PurchaseService(Repository(database_path), executor)
 
 
 @app.get("/health")
@@ -55,4 +63,3 @@ def reject_purchase(approval_id: UUID, decision: ApprovalDecision, service: Purc
 @app.get("/internal/outbox/events", response_model=list[OutboxEvent])
 def list_outbox_events(service: PurchaseService = Depends(get_service)) -> list[OutboxEvent]:
     return service.repository.list_events()
-

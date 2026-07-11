@@ -129,6 +129,7 @@ class Repository:
             user_id=UUID(row["user_id"]),
             conversation_id=UUID(row["conversation_id"]),
             offer=payload["offer"],
+            checkout=payload["checkout"],
             rejection_reason=row["rejection_reason"],
         )
 
@@ -174,4 +175,3 @@ class Repository:
             )
             for row in rows
         ]
-

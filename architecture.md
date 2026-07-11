@@ -159,9 +159,30 @@ Shopping Advisor tworzy tylko propozycje zakupu:
     "totalAmount": 10.00,
     "currency": "USD"
   },
-  "deliveryAddressId": "addr_456"
+  "deliveryAddressId": "addr_456",
+  "checkout": {
+    "deliveryAddress": {
+      "recipientName": "Jan Kowalski",
+      "email": "jan@example.com",
+      "phone": "+48111222333",
+      "addressLine1": "Testowa 1",
+      "postalCode": "00-001",
+      "city": "Warszawa",
+      "countryCode": "PL"
+    },
+    "productConfiguration": {
+      "options": {"rodzaj": "Płótno"},
+      "personalization": {"uwagi": "..."},
+      "uploadAssetIds": ["asset_123"]
+    },
+    "preferredShippingMethod": "kurier",
+    "preferredPaymentMethod": "Przelewy24",
+    "acceptTerms": false
+  }
 }
 ```
+
+Shopping Advisor przekazuje kompletne instrukcje checkoutu i niezmienny snapshot oferty. Identyfikatory plikow sa rozwiazywane na sciezki dopiero przez zaufany worker; LLM nie otrzymuje dowolnego dostepu do systemu plikow. Wartosci formularzy pochodza wylacznie z nazwanych pol snapshotu, a nie z tekstu wygenerowanego przez model.
 
 Purchase Orchestrator zwraca status procesu:
 

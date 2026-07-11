@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
-from uuid import UUID
 
-from .models import PurchaseDetails
+from .models import PurchaseDetails, PurchaseStatus
 
 
 @dataclass(frozen=True)
 class ExecutionReceipt:
     adapter: str
     external_reference: str
+    status: PurchaseStatus = PurchaseStatus.PURCHASED
 
 
 class PurchaseAdapter(Protocol):
@@ -37,4 +37,3 @@ class PurchaseExecutor:
 
     def execute(self, purchase: PurchaseDetails) -> ExecutionReceipt:
         return self.adapter.execute(purchase)
-

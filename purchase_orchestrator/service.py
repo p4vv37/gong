@@ -89,6 +89,8 @@ class PurchaseService:
 
     @staticmethod
     def _rejection_reason(policy: PurchasePolicyInput, request: PurchaseRequest) -> str | None:
+        if request.offer.total_amount > request.offer.maximum_total_amount:
+            return "Current total exceeds the maximum total accepted by Shopping Advisor"
         if policy.currency != request.offer.currency:
             return "Offer currency does not match the purchase policy"
         if policy.allowed_merchants and request.offer.merchant not in policy.allowed_merchants:
@@ -126,9 +128,10 @@ class PurchaseService:
             self._event("purchase.failed", purchase_id, {"conversationId": str(purchase.conversation_id)})
             raise
 
-        self.repository.set_purchase_status(purchase_id, PurchaseStatus.PURCHASED)
+        event_type = "purchase.completed" if receipt.status is PurchaseStatus.PURCHASED else "purchase.user_action_required"
+        self.repository.set_purchase_status(purchase_id, receipt.status)
         self._event(
-            "purchase.completed",
+            event_type,
             purchase_id,
             {
                 "conversationId": str(purchase.conversation_id),
@@ -136,7 +139,7 @@ class PurchaseService:
                 "externalReference": receipt.external_reference,
             },
         )
-        return PurchaseResponse(purchase_id=purchase_id, status=PurchaseStatus.PURCHASED, created_at=purchase.created_at)
+        return PurchaseResponse(purchase_id=purchase_id, status=receipt.status, created_at=purchase.created_at)
 
     @staticmethod
     def _token_hash(value: str) -> str:
