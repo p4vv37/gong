@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { API, type RecommendationSet } from "@/contract/http";
 import type { ProgressEvent } from "@/contract/events";
+import type { ResearchMode } from "@/contract/research";
 import {
   applyQuestionAnswer,
   createPurchaseBrief,
@@ -36,6 +37,7 @@ export function PurchaseWorkbench() {
   const [progressEvents, setProgressEvents] = useState<ProgressEvent[]>([]);
   const [researchResult, setResearchResult] = useState<RecommendationSet | null>(null);
   const [researchError, setResearchError] = useState<string | null>(null);
+  const [researchMode, setResearchMode] = useState<ResearchMode>("fixture");
   const currentQuestion = brief ? questions[brief.answeredQuestionIds.length] : undefined;
 
   useEffect(() => {
@@ -165,7 +167,7 @@ export function PurchaseWorkbench() {
       const response = await fetch(API.startResearch, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief, mode: "fixture" }),
+        body: JSON.stringify({ brief, mode: researchMode }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.runId) throw new Error(payload.error ?? "Research could not be started");
@@ -209,7 +211,7 @@ export function PurchaseWorkbench() {
         ) : null}
 
         {view === "research" ? (
-          <ResearchProgress events={progressEvents} error={researchError} onCancel={cancelResearch} />
+          <ResearchProgress events={progressEvents} error={researchError} mode={researchMode} onCancel={cancelResearch} />
         ) : view === "results" && researchResult ? (
           <RecommendationResults result={researchResult} onNewRequest={reset} />
         ) : !brief ? (
@@ -288,8 +290,16 @@ export function PurchaseWorkbench() {
                   <p className="eyebrow">Decision mapped</p>
                   <h2>Ready to search with intent.</h2>
                   <p>{provider === "openai" ? "The OpenAI category agent produced this plan. Product search is the next stage." : "The deterministic fixture produced this plan. Add an OpenAI key to test live category reasoning."}</p>
+                  <div className="research-mode-selector" aria-label="Research mode">
+                    <button type="button" aria-pressed={researchMode === "fixture"} onClick={() => setResearchMode("fixture")}>
+                      <strong>Fixture replay</strong><span>Fast, deterministic, no research API spend</span>
+                    </button>
+                    <button type="button" aria-pressed={researchMode === "live"} onClick={() => setResearchMode("live")}>
+                      <strong>Live web</strong><span>Real offers and policies · may take several minutes</span>
+                    </button>
+                  </div>
                   {researchError ? <p className="form-error" role="alert">{researchError}</p> : null}
-                  <button className="primary-button" type="button" onClick={beginProductResearch}>Start product research <span>→</span></button>
+                  <button className="primary-button" type="button" onClick={beginProductResearch}>Start {researchMode === "live" ? "live" : "fixture"} research <span>→</span></button>
                 </div>
               )}
             </section>

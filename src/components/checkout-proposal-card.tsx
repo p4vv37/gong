@@ -17,6 +17,7 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
   const [deciding, setDeciding] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [orderAcknowledged, setOrderAcknowledged] = useState(false);
 
   async function decide(approve: boolean) {
     setDeciding(true);
@@ -47,13 +48,18 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
       <section className={`consent-card consent-${proposal.status}`} aria-live="polite">
         <button className="consent-close" type="button" onClick={onClose} aria-label="Close proposal">×</button>
         <span className="consent-result-icon">{approved ? "✓" : "×"}</span>
-        <p className="eyebrow">Decision recorded</p>
-        <h3>{approved ? "Approved for the next stage." : "Proposal rejected."}</h3>
-        <p>
-          {approved
-            ? "No order or payment was placed. This approval only authorizes a future checkout workflow to continue."
-            : "Nothing was purchased and no checkout workflow will continue for this proposal."}
-        </p>
+        <p className="eyebrow">{approved ? "Purchase confirmation" : "Decision recorded"}</p>
+        <h3>{approved ? "Mock order placed." : "Proposal rejected."}</h3>
+        {approved && proposal.order ? (
+          <div className="order-confirmation">
+            <div><span>Order ID</span><strong>{proposal.order.orderId}</strong></div>
+            <div><span>Placed at</span><strong>{new Date(proposal.order.placedAt).toLocaleString()}</strong></div>
+            <div><span>Total</span><strong>{money(proposal.totalPrice.amount, proposal.totalPrice.currency)}</strong></div>
+          </div>
+        ) : null}
+        <p>{approved
+          ? "The purchase gate resumed and persisted the prototype order record. No merchant was contacted and no real payment was transferred."
+          : "No order was created and the purchase gate stopped for this proposal."}</p>
       </section>
     );
   }
@@ -62,7 +68,7 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
     <section className="consent-card" aria-label="Checkout approval proposal">
       <button className="consent-close" type="button" onClick={onClose} aria-label="Close proposal">×</button>
       <p className="eyebrow">Explicit consent boundary</p>
-      <h3>Review before anything continues.</h3>
+      <h3>Review before placing this mock order.</h3>
       <div className="consent-merchant">
         <div><span>Seller</span><strong>{proposal.merchantName}</strong><small>{proposal.merchantDomain}</small></div>
         <div className="consent-total"><span>Verified total</span><strong>{money(proposal.totalPrice.amount, proposal.totalPrice.currency)}</strong></div>
@@ -81,6 +87,17 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
         </div>
       ) : null}
       <p className="consent-expiry">Proposal expires {new Date(proposal.expiresAt).toLocaleString()}</p>
+      <label className="order-acknowledgment">
+        <input
+          type="checkbox"
+          checked={orderAcknowledged}
+          onChange={(event) => setOrderAcknowledged(event.target.checked)}
+        />
+        <span>
+          <strong>I understand that approval creates the prototype order now.</strong>
+          This records an order and resumes the purchase gate. It does not contact the merchant or transfer real money.
+        </span>
+      </label>
       <label className="rejection-reason">
         Optional reason if rejecting
         <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. compare another offer first" />
@@ -88,11 +105,11 @@ export function CheckoutProposalCard({ proposal, onUpdated, onClose }: CheckoutP
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="consent-actions">
         <button type="button" className="reject-button" onClick={() => decide(false)} disabled={deciding}>Reject</button>
-        <button type="button" className="approve-button" onClick={() => decide(true)} disabled={deciding}>
-          {deciding ? "Recording…" : "Approve next stage"} <span>→</span>
+        <button type="button" className="approve-button" onClick={() => decide(true)} disabled={deciding || !orderAcknowledged}>
+          {deciding ? "Placing…" : "Place mock order"} <span>→</span>
         </button>
       </div>
-      <p className="consent-legal">This does not place an order, send payment, or share checkout credentials.</p>
+      <p className="consent-legal">Reject remains available without checking the acknowledgment.</p>
     </section>
   );
 }

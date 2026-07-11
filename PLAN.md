@@ -45,9 +45,11 @@ User test:
 1. Inspect Best overall, Best value, and Lowest risk cards.
 2. Verify product reviews and store/seller reviews are separate.
 3. Confirm confidence-zero policy facts say Unverified.
-4. Prepare a checkout proposal, inspect totals and unknowns, then test both approval and rejection.
+4. Prepare a checkout proposal and inspect totals and unknowns.
+5. Confirm approval is disabled until the order-placement acknowledgment is checked.
+6. Test rejection, then deliberately approve a fixture proposal and inspect the mock order ID and placement timestamp.
 
-Acceptance: offer claims, trade-offs, review evidence, policy depth, confidence, and unknowns remain distinct. Approval records consent but explicitly does not place an order or payment.
+Acceptance: offer claims, trade-offs, review evidence, policy depth, confidence, and unknowns remain distinct. Approval resumes the purchase gate and creates a persisted mock order record; the UI renders its ID/time while stating that no real merchant or payment was involved.
 
 ## Checkpoint 5 — resilience and end-to-end quality
 

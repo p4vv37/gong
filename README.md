@@ -12,7 +12,7 @@ An evidence-driven purchasing agent that turns a natural-language request into a
 - Best overall, best value, and lowest-risk recommendation cards.
 - Separate product-review and store/seller-review evidence.
 - Confidence, evidence depth, compromises, and unknowns.
-- Checkout proposal with explicit approve/reject consent; no ordering or payment.
+- Checkout proposal with explicit approve/reject consent; approval creates a persisted mock order confirmation with no real merchant contact or payment transfer.
 
 ## Run it
 
