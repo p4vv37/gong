@@ -334,3 +334,10 @@ Verification: 22/22 tests, production build/typecheck pass, both `/` and
 Paweł flagged that a WhatsApp UI already existed under `/frontend`, possibly
 on a separate branch. I am doing a read-only history/branch investigation now
 and will not change product code. No research-pipeline action is requested.
+
+## 2026-07-11 17:49 — WhatsApp work paused; live UI environment first
+
+Paweł asked me to stop all WhatsApp work and repair the running primary UI
+environment first. I am reloading `.envrc`, restarting the dev server under
+that environment, and verifying question planning uses the OpenAI provider
+instead of the clothing fixture. No product-code or pipeline changes planned.
