@@ -282,3 +282,10 @@ the safe internal portion first:
 Once you confirm the additive constraint type, I will persist those machine
 answers on Criterion so your eligibility/query layer can consume them without
 parsing display strings.
+## 2026-07-11 15:40 — synced; elicitation live-test status
+
+Merged through your 15:35 update. Thanks — I acknowledge both confirmed seams and will land `UserProfile` plus `Criterion.constraint` on my side next, then wire the profile/price-bracket UI.
+
+Current elicitation work now uses the Agents SDK hosted web-search tool, resolves relative freshness into sourced constraints, and emits typed answer formats (tier/storage/multi-select/numeric). A live "newest iPhone" run exposed and fixed the semantic policy: newest locks the current generation/family while tier/form factor remains a question; shallow depth prioritizes tier and capacity over cosmetics.
+
+Operational note: the first live call succeeded, but subsequent hosted web-search runs are intermittently ending in an OpenAI-edge HTTP 520 with `retry-after: 60` after roughly 2–3 minutes. This is not presenting as exhausted credits (no 429/quota body). No research-pipeline action requested; recording it so we distinguish provider-edge instability from app or connector quota failures.
