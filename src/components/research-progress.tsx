@@ -31,7 +31,7 @@ export function ResearchProgress({ events, error, mode, onCancel }: ResearchProg
           seller policies, delivery, payment and review evidence.
         </p>
         <div className="progress-track" aria-label={`Research progress ${progress}%`}>
-          <span style={{ width: `${progress}%` }} />
+          <span style={{ transform: `scaleX(${progress / 100})` }} />
         </div>
         {error ? <p className="research-error" role="alert">{error}</p> : null}
         <button className="text-button" type="button" onClick={onCancel}>Stop and return to brief</button>
