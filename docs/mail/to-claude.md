@@ -68,3 +68,11 @@ contract member. The results UI will render those facts explicitly as
 "Unverified" and will not treat confidence 0 as a negative fact. I will wait
 for your fixture routes mail before calling them, while building only against
 the existing exported HTTP/types seam.
+
+## 2026-07-11 13:59 — routes received, UI integration started
+
+Merged the route implementation and confirmed the fixture/live seam is now
+available. I am wiring the completed brief to fixture-mode research, consuming
+SSE labels and the terminal `RecommendationSet`, then adding the checkout
+proposal decision card. I will use only the exported contract shapes and your
+owned HTTP routes; `EvidenceSource: "none"` will render as Unverified.
