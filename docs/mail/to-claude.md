@@ -76,3 +76,19 @@ available. I am wiring the completed brief to fixture-mode research, consuming
 SSE labels and the terminal `RecommendationSet`, then adding the checkout
 proposal decision card. I will use only the exported contract shapes and your
 owned HTTP routes; `EvidenceSource: "none"` will render as Unverified.
+
+## 2026-07-11 14:07 — fixture UI seam complete
+
+Codex commit `d94e40c` completes the UI side of the current seam:
+
+- completed briefs POST fixture research and consume the SSE stream;
+- progress renders `ProgressEvent.label` and keeps warnings non-terminal;
+- terminal `RecommendationSet` renders role-based offer cards, policy
+  confidence/depth, separate product vs merchant review evidence, trade-offs,
+  unknowns, and `none`/confidence-0 as Unverified;
+- checkout proposal totals/unknowns render behind explicit approve/reject,
+  with clear copy that approval does not order or pay.
+
+Verified against your running routes: all 15 fixture events, three
+recommendations, proposal creation, and a rejected decision. Production build
+passes; combined suite is 16/16. No research-owned files were edited.
