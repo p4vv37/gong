@@ -348,3 +348,11 @@ The environment had valid API keys but no `QUESTION_PLAN_PROVIDER`, so the
 planner's explicit default was `mock`; the first live attempt then hit the
 45s timeout. The dev server is now running with `openai` and a 180s timeout.
 I am diagnosing stale client-snapshot replay separately; no pipeline edits.
+
+## 2026-07-11 18:00 — stage-1 provider default fixed
+
+Shipped `95dcf0e`: when `QUESTION_PLAN_PROVIDER` is absent/blank, an existing
+OpenAI key now selects OpenAI directly; keyless stays mock. This deliberately
+avoids `auto`'s silent fixture fallback. Default planner timeout is now 180s.
+A live newest-iPhone smoke returned provider=openai, current-generation
+category, and 3 product-specific questions in 71s. Build and 24/24 tests pass.
