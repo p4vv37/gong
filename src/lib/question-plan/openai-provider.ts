@@ -33,7 +33,7 @@ Rules:
 
 export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
   async createPlan(input: QuestionPlanRequest) {
-    const timeoutMs = Number(process.env.QUESTION_PLAN_TIMEOUT_MS ?? "45000");
+    const timeoutMs = Number(process.env.QUESTION_PLAN_TIMEOUT_MS ?? "180000");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("Question-plan provider timed out")), timeoutMs);
     const agent = new Agent({
