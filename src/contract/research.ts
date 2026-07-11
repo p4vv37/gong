@@ -1,5 +1,7 @@
 import type { PurchaseBrief } from "../domain/purchase-brief";
 
+export type { Criterion, CriterionKind, PurchaseBrief } from "../domain/purchase-brief";
+
 /**
  * Research-side data model. This file is the contract between the
  * conversation half (src/domain, src/components — owned by the elicitation
@@ -21,7 +23,8 @@ export type EvidenceSource =
   | "firecrawl_json" // Firecrawl scrape, `json` format w/ schema
   | "policy_page" // LLM deep-read of shipping/returns/TOS page
   | "review_page" // review page or widget
-  | "fixture"; // recorded/replayed demo data
+  | "fixture" // recorded/replayed demo data
+  | "none"; // placeholder for unknown fields (confidence 0)
 
 /**
  * How deep the observation was made. A claim at "merchant" level (e.g. the
