@@ -17,6 +17,8 @@ export function createProposal(result: RecommendationSet, offerId: string): Chec
   if (!offer) return { error: `unknown offer ${offerId}` };
   const merchant = result.merchants[offer.merchantId];
   const policy = result.policies[offer.merchantId];
+  const product = result.products[offer.productId];
+  const variant = offer.variantId ? result.variants[offer.variantId] : undefined;
 
   const itemPrice = offer.price.value;
   if (!itemPrice) return { error: "offer has no verified price" };
@@ -41,6 +43,8 @@ export function createProposal(result: RecommendationSet, offerId: string): Chec
     id: `chk-${randomUUID().slice(0, 8)}`,
     runId: result.runId,
     offerSnapshot: offer,
+    productTitle: product?.title ?? offer.productId,
+    variantLabel: variant?.label,
     merchantName: merchant?.name ?? offer.merchantId,
     merchantDomain: merchant?.domain ?? "",
     itemPrice,

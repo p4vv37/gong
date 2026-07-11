@@ -4,6 +4,39 @@ An evidence-driven purchasing agent: a natural-language request becomes an expli
 
 Two components live in this repo:
 
+The Next.js checkout routes are the server-side integration boundary. They translate a selected Advisor offer into a `PurchaseRequest`, keep approval tokens off the browser, and forward approve/reject decisions to FastAPI.
+
+## Full pipeline (safe dummy purchase)
+
+Use Node.js 22+ for the live research connectors. Fixture mode also builds on Node.js 20.
+
+Create `.env.local` from `.env.example`. Keep `PURCHASE_ORCHESTRATOR_URL=http://127.0.0.1:8000`; API keys are optional in fixture mode.
+
+Terminal 1 â€” Purchase Orchestrator:
+
+```powershell
+uv sync --group dev
+$env:PURCHASE_ADAPTER="dummy"
+uv run uvicorn purchase_orchestrator.main:app --reload --port 8000
+```
+
+Terminal 2 â€” Shopping Advisor and ChatUI:
+
+```powershell
+npm ci
+npm run dev -- --port 3000
+```
+
+Open `http://127.0.0.1:3000`, complete the purchase brief, choose **Fixture replay**, open a recommendation, prepare checkout, acknowledge the consent and select **Authorize purchase**. The browser calls only Next.js; its server routes create and approve the FastAPI purchase. With the dummy adapter the final status is `PURCHASED` without merchant contact or payment.
+
+With both services running, verify the complete HTTP seam non-interactively:
+
+```powershell
+npm run smoke:full-pipeline
+```
+
+For live research, add `OPENAI_API_KEY`, `SERPAPI_API_KEY`, and `FIRECRAWL_API_KEY` to `.env.local`, then choose **Live web**. Keep `PURCHASE_ADAPTER=dummy` until browser execution is explicitly desired.
+
 - **Shopping Advisor** (Next.js, repo root) — elicitation, offer research, standardization, recommendations, consent UI.
 - **Purchase Orchestrator** (`purchase_orchestrator/`, Python) — purchase policies, approvals, and purchase adapters.
 
