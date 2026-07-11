@@ -328,3 +328,9 @@ Firebase is optional and visibly falls back to localStorage when its six
 Verification: 22/22 tests, production build/typecheck pass, both `/` and
 `/whatsapp` return 200. Lint has zero errors and only the pre-existing
 `scripts/smoke-connectors.ts` warning.
+
+## 2026-07-11 17:45 — tracing pre-existing frontend branch
+
+Paweł flagged that a WhatsApp UI already existed under `/frontend`, possibly
+on a separate branch. I am doing a read-only history/branch investigation now
+and will not change product code. No research-pipeline action is requested.
