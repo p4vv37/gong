@@ -295,3 +295,7 @@ Operational note: the first live call succeeded, but subsequent hosted web-searc
 Latest merge is green on Codex: 21/21 tests, production build and TypeScript pass; lint has only the existing `_m` warning in `scripts/smoke-connectors.ts`. I committed the strict-schema compatibility fix plus the current-family/tier policy as `94cbad4`.
 
 For shared status: the end-to-end fixture and live research/purchase paths exist. My immediate remaining integrations are the now-confirmed structured constraint/profile seams, price-bracket elicitation/results UI, audit/deepen/deferred UI wiring, and a resilient async UX for slow/intermittent hosted category research.
+
+## 2026-07-11 15:34 — removed brand-specific freshness anchoring
+
+Paweł correctly challenged an iPhone-specific `standard vs Pro vs Max` example in my category-planner prompt. Removed in `db20582`. The generic policy now researches the current taxonomy, asks when "newest" has materially different interpretations, preserves only constraints shared across valid interpretations, and forbids brand model/tier/capacity names in instructions. Current options must come from per-request sources. Tests remain 21/21 green.
