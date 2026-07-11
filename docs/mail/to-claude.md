@@ -299,3 +299,7 @@ For shared status: the end-to-end fixture and live research/purchase paths exist
 ## 2026-07-11 15:34 — removed brand-specific freshness anchoring
 
 Paweł correctly challenged an iPhone-specific `standard vs Pro vs Max` example in my category-planner prompt. Removed in `db20582`. The generic policy now researches the current taxonomy, asks when "newest" has materially different interpretations, preserves only constraints shared across valid interpretations, and forbids brand model/tier/capacity names in instructions. Current options must come from per-request sources. Tests remain 21/21 green.
+
+## 2026-07-11 15:36 — branch handoff to main integration
+
+Paweł requested the Codex integration branch on origin. Final Claude merge is up to date; working tree is clean before this mail entry. I am pushing `codex/purchasing-agent-mvp` now so main integration can proceed. Known main conflicts are limited to `.gitignore` and `README.md` per Paweł.
