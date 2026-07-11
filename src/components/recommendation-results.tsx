@@ -65,6 +65,16 @@ export function RecommendationResults({ result, onNewRequest }: RecommendationRe
   const [proposal, setProposal] = useState<CheckoutProposal | null>(null);
   const [proposingOfferId, setProposingOfferId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const evidenceGaps = Object.values(result.merchants).flatMap((merchant) => {
+    const policy = result.policies[merchant.id];
+    if (!policy) return [{ merchant: merchant.name, fields: ["shipping", "returns", "payment"] }];
+    const fields = [
+      !policy.shipping.value || policy.shipping.confidence === 0 ? "shipping" : null,
+      !policy.returns.value || policy.returns.confidence === 0 ? "returns" : null,
+      !policy.payment.value || policy.payment.confidence === 0 ? "payment" : null,
+    ].filter((field): field is string => field !== null);
+    return fields.length ? [{ merchant: merchant.name, fields }] : [];
+  });
 
   async function proposeCheckout(offerId: string) {
     setProposingOfferId(offerId);
@@ -149,6 +159,24 @@ export function RecommendationResults({ result, onNewRequest }: RecommendationRe
           );
         })}
       </div>
+
+      {evidenceGaps.length > 0 ? (
+        <section className="evidence-gaps">
+          <div>
+            <p className="eyebrow">What we refused to guess</p>
+            <h3>Unknown means unknown.</h3>
+            <p>These facts were not converted into reassuring defaults or silent negatives.</p>
+          </div>
+          <ul>
+            {evidenceGaps.map((gap) => (
+              <li key={gap.merchant}>
+                <div><strong>{gap.merchant}</strong><span>{gap.fields.join(" · ")}</span></div>
+                <b>Unverified</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {proposal ? (
         <div className="consent-overlay" role="dialog" aria-modal="true" aria-label="Checkout proposal">
