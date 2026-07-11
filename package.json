@@ -2,13 +2,17 @@
   "name": "gong-purchasing-agent",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke:full-pipeline": "tsx scripts/smoke-full-pipeline.ts"
   },
   "dependencies": {
     "@openai/agents": "^0.13.2",

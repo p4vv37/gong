@@ -1,0 +1,50 @@
+{
+  "client_request_id": "10000000-0000-4000-8000-000000000001",
+  "user_id": "10000000-0000-4000-8000-000000000002",
+  "conversation_id": "10000000-0000-4000-8000-000000000003",
+  "delivery_address_id": "10000000-0000-4000-8000-000000000004",
+  "offer": {
+    "merchant": "cs-studio.pl",
+    "product_url": "https://cs-studio.pl/products/obraz-z-twojego-zdjecia-na-zamowienie-spersonalizowany-prezent",
+    "merchant_product_id": "obraz-z-twojego-zdjecia-na-zamowienie-spersonalizowany-prezent",
+    "title": "Obraz z Twojego zdjęcia na zamówienie | Spersonalizowany prezent",
+    "variant": "Płótno",
+    "quantity": 1,
+    "item_amount": "149.00",
+    "shipping_amount": "0.00",
+    "tax_amount": "0.00",
+    "total_amount": "149.00",
+    "maximum_total_amount": "170.00",
+    "currency": "PLN",
+    "is_subscription": false
+  },
+  "checkout": {
+    "delivery_address": {
+      "recipient_name": "Jan Testowy",
+      "email": "jan.testowy@example.com",
+      "phone": "+48111222333",
+      "address_line1": "Testowa 1",
+      "address_line2": null,
+      "postal_code": "00-001",
+      "city": "Warszawa",
+      "country_code": "PL"
+    },
+    "product_configuration": {
+      "options": {
+        "rodzaj": "Płótno",
+        "pakowanie_na_prezent": "false",
+        "akceptacja_projektu": "true"
+      },
+      "personalization": {
+        "dedykacja": "Mock testowy — nie realizować"
+      },
+      "upload_asset_ids": [
+        "asset_mock_portrait_001"
+      ]
+    },
+    "preferred_shipping_method": "kurier",
+    "preferred_payment_method": "Przelewy24",
+    "customer_note": "TEST AUTOMATYZACJI — NIE REALIZOWAĆ",
+    "accept_terms": false
+  }
+}

@@ -18,6 +18,8 @@ export type CheckoutProposal = {
   runId: string;
   /** immutable snapshot — re-verified at proposal time, not a live reference */
   offerSnapshot: Offer;
+  productTitle: string;
+  variantLabel?: string;
   merchantName: string;
   merchantDomain: string;
   itemPrice: Money;
@@ -30,6 +32,11 @@ export type CheckoutProposal = {
   proposedAt: string;
   expiresAt: string; // proposals go stale; prices drift
   status: CheckoutProposalStatus;
+  orchestrator?: {
+    purchaseId: string;
+    approvalId?: string;
+    status: string;
+  };
   decidedAt?: string;
   rejectionReason?: string;
   /** set on the decision response once an approval placed the (mock) order */
