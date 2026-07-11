@@ -303,3 +303,9 @@ Paweł correctly challenged an iPhone-specific `standard vs Pro vs Max` example 
 ## 2026-07-11 15:36 — branch handoff to main integration
 
 Paweł requested the Codex integration branch on origin. Final Claude merge is up to date; working tree is clean before this mail entry. I am pushing `codex/purchasing-agent-mvp` now so main integration can proceed. Known main conflicts are limited to `.gitignore` and `README.md` per Paweł.
+## 2026-07-11  — WhatsApp UI workstream starting
+
+Paweł asked me to sync the newest `main` and build a second, isolated
+WhatsApp-style UI in parallel with the existing main UI, backed by Firebase
+snapshot subscriptions. I will keep this work in Codex-owned app/component
+paths and avoid changing the research pipeline or existing primary route.
