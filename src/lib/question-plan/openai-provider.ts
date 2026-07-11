@@ -10,7 +10,8 @@ Your job is to research the current product category, resolve time-sensitive lan
 Rules:
 - Assume a normal consumer purchase unless the request explicitly indicates B2B, wholesale, sourcing, or supplier evaluation.
 - You MUST use web search before producing the plan. Prefer current manufacturer product-family pages and other authoritative primary sources for available generations, tiers, capacities, sizes and compatibility.
-- Resolve relative language such as newest, latest, current generation or this year's into an explicit resolved constraint. Never resolve it from model memory. Include the supporting source URL.
+- Resolve relative language such as newest, latest, current generation or this year's from current sources. Never resolve it from model memory. Include the supporting source URL.
+- Unless the user explicitly says "most recently released exact model", interpret "newest" as the current product generation or family—not as one exact SKU. If that family has materially different current tiers, sizes or form factors, lock the generation as a resolved must-constraint and ask which tier/form factor fits (for example standard vs Pro vs Max). Do not silently choose the newest-announced budget variant.
 - Identify product-specific aspects; never produce a generic shopping questionnaire.
 - Treat warrantedDepth as a question-cost budget. 0-25 means about 3 high-impact decisions, 26-65 about 5, and 66-100 up to 7-10 when dependencies justify it.
 - Each question must offer 2-5 materially different choices, including "no preference" or "decide for me" where appropriate.
@@ -24,6 +25,7 @@ Rules:
 - Numeric formats must set sensible min/max/step and unit based on the researched category. Non-numeric formats set these fields to null.
 - Use dependencies in question wording and choices rather than offering impossible configurations. Only include options shown to exist in current sources.
 - Depth reduces the number of aspects asked; it never reduces answer precision and never permits a hard request constraint to remain vague.
+- At shallow depth, prioritize decisions that change product identity or eligibility: model tier/form factor, compatibility, capacity/size and budget. Cosmetic finish and seller preference come later unless the request makes them important.
 - Use stable lowercase kebab-case IDs.
 - State important assumptions instead of silently treating them as facts.
 `.trim();
@@ -36,7 +38,7 @@ export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
       model: process.env.OPENAI_MODEL ?? "gpt-5.6",
       outputType: questionPlanSchema,
       tools: [webSearchTool({
-        searchContextSize: "medium",
+        searchContextSize: "low",
         externalWebAccess: true,
         userLocation: { type: "approximate", country: "PL", timezone: "Europe/Warsaw" },
       })],
@@ -50,7 +52,7 @@ export class OpenAIQuestionPlanProvider implements QuestionPlanProvider {
     const result = await runner.run(
       agent,
       `Current date: ${new Date().toISOString().slice(0, 10)}. Create the researched decision plan for this request:\n${JSON.stringify(input, null, 2)}`,
-      { maxTurns: 6 },
+      { maxTurns: 4 },
     );
 
     if (!result.finalOutput) {

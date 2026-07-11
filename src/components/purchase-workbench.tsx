@@ -23,6 +23,15 @@ function depthCopy(depth: number) {
   return "Deep · detailed trade-offs, uncertainty and purchase risk";
 }
 
+function safeExternalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function PurchaseWorkbench() {
   const [request, setRequest] = useState(exampleRequest);
   const [depth, setDepth] = useState(58);
@@ -163,6 +172,21 @@ export function PurchaseWorkbench() {
     setMultiAnswerIds([]);
   }
 
+  function toggleMultiChoice(choice: QuestionChoice) {
+    const isExclusive = choice.criterion.kind === "indifferent" || choice.criterion.kind === "delegate";
+    const exclusiveIds = new Set(
+      currentQuestion?.choices
+        .filter((item) => item.criterion.kind === "indifferent" || item.criterion.kind === "delegate")
+        .map((item) => item.id) ?? [],
+    );
+
+    setMultiAnswerIds((current) => {
+      if (current.includes(choice.id)) return current.filter((id) => id !== choice.id);
+      if (isExclusive) return [choice.id];
+      return [...current.filter((id) => !exclusiveIds.has(id)), choice.id];
+    });
+  }
+
   function reset() {
     localStorage.removeItem("gong.purchase-session.v1");
     setBrief(null);
@@ -296,7 +320,7 @@ export function PurchaseWorkbench() {
                               className={`choice-card ${selected ? "choice-selected" : ""}`}
                               type="button"
                               aria-pressed={selected}
-                              onClick={() => setMultiAnswerIds((current) => selected ? current.filter((id) => id !== choice.id) : [...current, choice.id])}
+                              onClick={() => toggleMultiChoice(choice)}
                             >
                               <strong>{choice.label}</strong><span>{choice.consequence}</span>
                             </button>
@@ -375,7 +399,14 @@ export function PurchaseWorkbench() {
                     <div className="taxonomy-note">
                       <strong>Researched product taxonomy</strong>
                       <p>{taxonomySummary}</p>
-                      {taxonomySources.length ? <div>{taxonomySources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.title} ↗</a>)}</div> : null}
+                      {taxonomySources.length ? (
+                        <div>
+                          {taxonomySources.map((source) => {
+                            const href = safeExternalUrl(source.url);
+                            return href ? <a href={href} target="_blank" rel="noreferrer" key={source.url}>{source.title} ↗</a> : null;
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="research-mode-selector" aria-label="Research mode">
